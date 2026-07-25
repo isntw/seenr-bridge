@@ -17,6 +17,7 @@ export interface ProcessResult {
   ids?: string[];
   title?: string;
   media_type?: string;
+  image?: string | null;
   seenr_status?: number;
   payload?: Record<string, unknown>;
 }
@@ -33,7 +34,8 @@ export async function processEvent(input: IncomingEvent, opts: { dryRun?: boolea
       insertEvent({
         ts: now, action: input.action, event: extra.event ?? null as any, username: input.username,
         media_type: extra.media_type ?? null as any, title: extra.title ?? null as any, rating_key: input.rating_key,
-        ids: extra.ids ? JSON.stringify(extra.ids) : null, seenr_status: extra.seenr_status ?? null,
+        ids: extra.ids ? JSON.stringify(extra.ids) : null, image: extra.image ?? null, series_key: null,
+        seenr_status: extra.seenr_status ?? null,
         ok: 0, error: reason, payload: extra.payload ? JSON.stringify(extra.payload) : null,
       });
     return { ok: false, reason, ...extra };
@@ -56,12 +58,19 @@ export async function processEvent(input: IncomingEvent, opts: { dryRun?: boolea
   }
 
   const built = buildPayload(meta, input.action, input.username);
-  const common = { event: built.event, ids: built.ids, title: built.title, media_type: meta.media_type, payload: built.payload };
+  const image = meta.media_type === 'episode' ? meta.grandparent_thumb || meta.thumb || null : meta.thumb || null;
+  const series_key = meta.media_type === 'episode' ? meta.grandparent_rating_key || null : null;
+  const common = { event: built.event, ids: built.ids, title: built.title, media_type: meta.media_type, image, payload: built.payload };
 
   if (opts.dryRun) return { ok: true, ...common };
 
   if (!settings.forward_enabled)
     return fail('Forwarding is disabled in settings', common);
+
+  if (meta.media_type === 'movie' && !mapping.sync_movies)
+    return { ok: false, skipped: true, reason: `Movie sync is off for ${mapping.username}`, ...common };
+  if (meta.media_type === 'episode' && !mapping.sync_episodes)
+    return { ok: false, skipped: true, reason: `Episode sync is off for ${mapping.username}`, ...common };
 
   let status: number, respBody: string;
   try {
@@ -75,7 +84,8 @@ export async function processEvent(input: IncomingEvent, opts: { dryRun?: boolea
   if (record)
     insertEvent({
       ts: now, action: input.action, event: built.event, username: input.username, media_type: meta.media_type,
-      title: built.title, rating_key: input.rating_key, ids: JSON.stringify(built.ids), seenr_status: status,
+      title: built.title, rating_key: input.rating_key, ids: JSON.stringify(built.ids), image, series_key,
+      seenr_status: status,
       ok: ok ? 1 : 0, error: ok ? null : `seenr HTTP ${status} ${respBody?.slice(0, 200)}`.trim(),
       payload: JSON.stringify(built.payload),
     });

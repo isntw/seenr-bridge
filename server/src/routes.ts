@@ -3,17 +3,45 @@ import {
   getSettings, saveSettings, listMappings, upsertMapping, deleteMapping,
   listEvents, getStats,
 } from './db';
-import { testConnection } from './tautulli';
+import { testConnection, syncSeenrWebhook, fetchImage, bridgeWebhookExists } from './tautulli';
 import { processEvent } from './pipeline';
+import { requireAuth } from './auth';
+import { VERSION } from './version';
 
 export const api = Router();
 
-api.get('/health', (_req, res) => res.json({ ok: true }));
+// The Tautulli webhook, health check, and version are public (Tautulli posts without a
+// session, and the version shows on the login screen); everything else requires a login.
+const PUBLIC_PATHS = new Set(['/health', '/webhook/tautulli', '/version']);
+api.use((req, res, next) => (PUBLIC_PATHS.has(req.path) ? next() : requireAuth(req, res, next)));
+
+api.get('/health', (_req, res) => res.json({ ok: true, version: VERSION }));
+api.get('/version', (_req, res) => res.json({ version: VERSION }));
 
 // ---- settings ----
-api.get('/settings', (_req, res) => {
+const settingsToJson = (s: ReturnType<typeof getSettings>) => ({
+  ...s,
+  forward_enabled: !!s.forward_enabled,
+  sync_movies: !!s.sync_movies,
+  sync_episodes: !!s.sync_episodes,
+});
+
+api.get('/settings', (_req, res) => res.json(settingsToJson(getSettings())));
+
+// Readiness summary for the setup page's status line.
+api.get('/status', async (_req, res) => {
   const s = getSettings();
-  res.json({ ...s, forward_enabled: !!s.forward_enabled });
+  const configured = !!(s.tautulli_url && s.tautulli_apikey);
+  const tautulli = configured ? await testConnection(s.tautulli_url, s.tautulli_apikey) : { ok: false, message: 'not configured' };
+  let webhook = false;
+  if (tautulli.ok) {
+    try {
+      webhook = await bridgeWebhookExists(s.tautulli_url, s.tautulli_apikey);
+    } catch {
+      webhook = false;
+    }
+  }
+  res.json({ tautulli, webhook, users: listMappings().length });
 });
 
 api.put('/settings', (req, res) => {
@@ -23,8 +51,11 @@ api.put('/settings', (req, res) => {
     tautulli_apikey: typeof b.tautulli_apikey === 'string' ? b.tautulli_apikey.trim() : undefined,
     seenr_base_url: typeof b.seenr_base_url === 'string' ? b.seenr_base_url.trim() : undefined,
     forward_enabled: b.forward_enabled === undefined ? undefined : b.forward_enabled ? 1 : 0,
+    bridge_url: typeof b.bridge_url === 'string' ? b.bridge_url.trim() : undefined,
+    sync_movies: b.sync_movies === undefined ? undefined : b.sync_movies ? 1 : 0,
+    sync_episodes: b.sync_episodes === undefined ? undefined : b.sync_episodes ? 1 : 0,
   });
-  res.json({ ...next, forward_enabled: !!next.forward_enabled });
+  res.json(settingsToJson(next));
 });
 
 api.post('/settings/test-tautulli', async (req, res) => {
@@ -35,14 +66,48 @@ api.post('/settings/test-tautulli', async (req, res) => {
   res.json(await testConnection(url, key));
 });
 
+// Create/update the single Webhook notifier in Tautulli, pointed back at this bridge.
+api.post('/tautulli/sync-webhook', async (req, res) => {
+  const s = getSettings();
+  if (!s.tautulli_url || !s.tautulli_apikey) return res.status(400).json({ ok: false, error: 'Configure and save the Tautulli connection first.' });
+
+  let baseUrl = (s.bridge_url || '').trim().replace(/\/+$/, '');
+  if (!baseUrl) {
+    const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol;
+    baseUrl = `${proto}://${req.get('host')}`;
+  }
+  const webhookUrl = `${baseUrl}/api/webhook/tautulli`;
+
+  try {
+    const triggers = Array.isArray(req.body?.triggers) ? req.body.triggers.filter((t: any) => typeof t === 'string') : undefined;
+    const r = await syncSeenrWebhook(s.tautulli_url, s.tautulli_apikey, webhookUrl, { triggers });
+    res.json({ ok: true, webhookUrl, ...r });
+  } catch (e: any) {
+    res.status(500).json({ ok: false, error: e?.message || String(e), webhookUrl });
+  }
+});
+
 // ---- mappings ----
-api.get('/mappings', (_req, res) => res.json(listMappings().map((m) => ({ ...m, enabled: !!m.enabled }))));
+const mappingToJson = (m: ReturnType<typeof upsertMapping>) => ({
+  ...m,
+  enabled: !!m.enabled,
+  sync_movies: !!m.sync_movies,
+  sync_episodes: !!m.sync_episodes,
+});
+
+api.get('/mappings', (_req, res) => res.json(listMappings().map(mappingToJson)));
 
 api.post('/mappings', (req, res) => {
-  const { username, seenr_token, enabled } = req.body || {};
+  const { username, seenr_token, enabled, sync_movies, sync_episodes } = req.body || {};
   if (!username || !seenr_token) return res.status(400).json({ error: 'username and seenr_token required' });
-  const m = upsertMapping(String(username).trim(), String(seenr_token).trim(), enabled === false ? 0 : 1);
-  res.json({ ...m, enabled: !!m.enabled });
+  const m = upsertMapping(
+    String(username).trim(),
+    String(seenr_token).trim(),
+    enabled === false ? 0 : 1,
+    sync_movies === false ? 0 : 1,
+    sync_episodes === false ? 0 : 1
+  );
+  res.json(mappingToJson(m));
 });
 
 api.delete('/mappings/:id', (req, res) => {
@@ -52,11 +117,28 @@ api.delete('/mappings/:id', (req, res) => {
 
 // ---- events / stats ----
 api.get('/events', (req, res) => {
-  const limit = Math.min(Number(req.query.limit) || 100, 500);
+  const limit = Math.min(Number(req.query.limit) || 25, 1000);
   res.json(listEvents(limit).map((e) => ({ ...e, ok: !!e.ok, ids: e.ids ? JSON.parse(e.ids) : [] })));
 });
 
 api.get('/stats', (_req, res) => res.json(getStats()));
+
+// Proxy poster/thumb art from Tautulli (keeps the API key server-side).
+api.get('/image', async (req, res) => {
+  const path = String(req.query.path || '');
+  if (!path.startsWith('/library/metadata/')) return res.status(400).end();
+  const s = getSettings();
+  if (!s.tautulli_url || !s.tautulli_apikey) return res.status(404).end();
+  try {
+    const img = await fetchImage(s.tautulli_url, s.tautulli_apikey, path);
+    if (!img) return res.status(404).end();
+    res.setHeader('Content-Type', img.contentType);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    return res.end(img.buffer);
+  } catch {
+    return res.status(502).end();
+  }
+});
 
 // ---- test scrobble (preview builds payload; send actually forwards) ----
 api.post('/test', async (req, res) => {

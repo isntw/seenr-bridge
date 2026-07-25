@@ -6,8 +6,9 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     port: 5173,
+    host: true,
     proxy: {
-      '/api': 'http://localhost:8687',
+      '/api': process.env.VITE_PROXY_TARGET || 'http://localhost:8687',
     },
   },
   build: { outDir: 'dist' },

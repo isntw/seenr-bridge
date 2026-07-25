@@ -1,7 +1,11 @@
+# Runs the pre-built image from GitHub Container Registry — no clone/build needed.
+#   mkdir seenr-bridge && cd seenr-bridge
+#   curl -O https://raw.githubusercontent.com/isntw/seenr-bridge/main/docker-compose.yml
+#   docker compose up -d
+# Then open http://<host>:8687
 services:
   seenr-bridge:
-    build: .
-    image: seenr-bridge:latest
+    image: ghcr.io/isntw/seenr-bridge:latest
     container_name: seenr-bridge
     restart: unless-stopped
     ports:

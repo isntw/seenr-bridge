@@ -2,6 +2,7 @@ import express from 'express';
 import path from 'path';
 import fs from 'fs';
 import { api } from './routes';
+import { authRouter } from './auth';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 8687;
@@ -10,6 +11,7 @@ const PORT = Number(process.env.PORT) || 8687;
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
+app.use('/api/auth', authRouter);
 app.use('/api', api);
 
 // Serve the built React client (production).

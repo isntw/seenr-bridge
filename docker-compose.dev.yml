@@ -1,0 +1,38 @@
+# Dev stack: live-reload for both halves, source mounted, no image rebuilds.
+#   Browser UI (Vite HMR):  http://<host>:5173
+#   API (tsx watch):        http://<host>:8687
+# Uses the same ./data DB as prod, so your settings/mappings carry over.
+services:
+  server:
+    image: node:20-bookworm-slim
+    container_name: seenr-bridge-server-dev
+    working_dir: /app
+    environment:
+      - DATA_DIR=/app/data
+      - PORT=8687
+    ports:
+      - "8687:8687"
+    volumes:
+      - ./server:/app
+      - ./data:/app/data
+      - srv_node_modules:/app/node_modules
+    command: bash -lc "apt-get update -qq && apt-get install -y -qq python3 make g++ >/dev/null 2>&1; npm install && npm run dev"
+
+  client:
+    image: node:20-bookworm-slim
+    container_name: seenr-bridge-client-dev
+    working_dir: /app
+    environment:
+      - VITE_PROXY_TARGET=http://server:8687
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./client:/app
+      - cli_node_modules:/app/node_modules
+    command: bash -lc "npm install && npm run dev -- --host 0.0.0.0"
+    depends_on:
+      - server
+
+volumes:
+  srv_node_modules:
+  cli_node_modules:

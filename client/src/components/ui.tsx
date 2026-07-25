@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 
 export function Card({ title, subtitle, children, actions }: {
   title?: string; subtitle?: string; children: React.ReactNode; actions?: React.ReactNode;
@@ -87,5 +88,63 @@ export function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: 
     >
       <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${checked ? 'translate-x-6' : 'translate-x-1'}`} />
     </button>
+  );
+}
+
+export function Modal({ open, onClose, title, children, footer }: {
+  open: boolean; onClose: () => void; title: string; children: React.ReactNode; footer?: React.ReactNode;
+}) {
+  if (!open) return null;
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative flex max-h-[90vh] w-full max-w-md flex-col rounded-2xl border border-white/10 bg-[#0e1320] shadow-2xl shadow-black/50">
+        <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-5 py-3.5">
+          <h3 className="text-sm font-semibold text-white">{title}</h3>
+          <button onClick={onClose} aria-label="Close" className="text-slate-400 transition hover:text-white">
+            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+        <div className="overflow-y-auto p-5">{children}</div>
+        {footer && <div className="flex shrink-0 items-center justify-end gap-3 border-t border-white/10 px-5 py-3.5">{footer}</div>}
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+export function CopyField({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = value;
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch { /* ignore */ }
+      document.body.removeChild(ta);
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <div>
+      <div className="mb-1.5 text-sm font-medium text-slate-200">{label}</div>
+      <div className="flex items-stretch gap-2">
+        <code className="flex-1 overflow-x-auto whitespace-pre rounded-lg border border-white/10 bg-black/40 px-3 py-2 font-mono text-xs text-slate-200">{value}</code>
+        <button
+          type="button"
+          onClick={copy}
+          className={`shrink-0 rounded-lg border border-transparent px-3 py-2 text-sm font-medium transition ${
+            copied ? 'bg-emerald-600 text-white' : 'bg-white/5 text-slate-200 ring-1 ring-white/10 hover:bg-white/10'
+          }`}
+        >
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+      {hint && <div className="mt-1 text-xs text-slate-500">{hint}</div>}
+    </div>
   );
 }

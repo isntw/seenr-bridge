@@ -3,6 +3,29 @@ export interface Settings {
   tautulli_apikey: string;
   seenr_base_url: string;
   forward_enabled: boolean;
+  bridge_url: string;
+  sync_movies: boolean;
+  sync_episodes: boolean;
+}
+
+export interface Status {
+  tautulli: { ok: boolean; message: string };
+  webhook: boolean;
+  users: number;
+}
+
+export interface AuthStatus {
+  authenticated: boolean;
+  username: string | null;
+  needsSetup: boolean;
+}
+
+export interface SyncResult {
+  ok: boolean;
+  webhookUrl?: string;
+  notifier_id?: number;
+  created?: boolean;
+  error?: string;
 }
 
 export interface Mapping {
@@ -10,6 +33,8 @@ export interface Mapping {
   username: string;
   seenr_token: string;
   enabled: boolean;
+  sync_movies: boolean;
+  sync_episodes: boolean;
 }
 
 export interface EventRow {
@@ -22,6 +47,7 @@ export interface EventRow {
   title: string | null;
   rating_key: string | null;
   ids: string[];
+  image: string | null;
   seenr_status: number | null;
   ok: boolean;
   error: string | null;
@@ -33,6 +59,9 @@ export interface Stats {
   ok: number;
   failed: number;
   last: number | null;
+  episodes: number;
+  movies: number;
+  users: number;
 }
 
 export interface TestResult {

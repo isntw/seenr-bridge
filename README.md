@@ -4,6 +4,8 @@ A small self-hosted service that makes **Tautulli → [seenr](https://seenr.app)
 
 ![version](https://img.shields.io/badge/version-1.0.0-8b5cf6)
 
+![Seenr Bridge dashboard](docs/dashboard.png)
+
 ## Why it exists
 
 seenr identifies an episode by its **own** TMDb/TVDb/IMDB id. But Tautulli's webhook template can only emit the **show's** id for an episode ([Tautulli #2510](https://github.com/Tautulli/Tautulli/issues/2510) — an open, unresolved feature request). So a raw Tautulli webhook sends the *series* id, seenr resolves it as an *episode* id, and you get checked in on the **wrong show**.

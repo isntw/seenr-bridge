@@ -1,0 +1,13 @@
+services:
+  seenr-bridge:
+    build: .
+    image: seenr-bridge:latest
+    container_name: seenr-bridge
+    restart: unless-stopped
+    ports:
+      - "8687:8687"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - PORT=8687
+      - TZ=Etc/UTC

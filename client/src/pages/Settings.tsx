@@ -59,6 +59,8 @@ export default function Settings() {
   const [newUser, setNewUser] = useState('');
   const [newToken, setNewToken] = useState('');
   const [edit, setEdit] = useState<Mapping | null>(null);
+  const [tautUsers, setTautUsers] = useState<string[]>([]);
+  const [manualUser, setManualUser] = useState(false);
 
   const [testRk, setTestRk] = useState('');
   const [testUser, setTestUser] = useState('');
@@ -75,11 +77,13 @@ export default function Settings() {
   const [showTest, setShowTest] = useState(false);
 
   const refreshStatus = () => api.getStatus().then(setStatus).catch(() => setStatus(null));
+  const refreshUsers = () => api.getTautulliUsers().then((r) => setTautUsers(r.users || [])).catch(() => setTautUsers([]));
 
   useEffect(() => {
     api.getSettings().then(setS);
     api.getMappings().then(setMappings);
     refreshStatus();
+    refreshUsers();
   }, []);
 
   const save = async () => {
@@ -90,6 +94,7 @@ export default function Settings() {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
       refreshStatus();
+      refreshUsers();
     } finally {
       setSaving(false);
     }
@@ -108,6 +113,7 @@ export default function Settings() {
     setTestMsg(null);
     setTestMsg(await api.testTautulli({ tautulli_url: s.tautulli_url, tautulli_apikey: s.tautulli_apikey }));
     refreshStatus();
+    refreshUsers();
   };
 
   const addMapping = async () => {
@@ -166,6 +172,8 @@ export default function Settings() {
   if (!s) return <div className="text-slate-400">Loading…</div>;
 
   const webhookUrl = `${(s.bridge_url || window.location.origin).replace(/\/+$/, '')}/api/webhook/tautulli`;
+  const mappedUsers = new Set(mappings.map((m) => m.username.toLowerCase()));
+  const availableUsers = tautUsers.filter((u) => !mappedUsers.has(u.toLowerCase()));
 
   return (
     <div className="space-y-4">
@@ -216,7 +224,34 @@ export default function Settings() {
           ))}
         </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_2fr_auto] sm:items-start">
-          <Field label="Plex username"><Input value={newUser} onChange={(e) => setNewUser(e.target.value)} placeholder="plexuser" /></Field>
+          <Field
+            label="Plex username"
+            hint={
+              availableUsers.length || manualUser ? (
+                tautUsers.length ? (
+                  <button type="button" onClick={() => { setManualUser((v) => !v); setNewUser(''); }} className="text-violet-400 transition hover:text-violet-300">
+                    {manualUser ? 'pick from Tautulli' : 'type manually'}
+                  </button>
+                ) : undefined
+              ) : (
+                'connect Tautulli to pick from a list'
+              )
+            }
+          >
+            {tautUsers.length && !manualUser ? (
+              <select
+                value={newUser}
+                onChange={(e) => setNewUser(e.target.value)}
+                className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-violet-500/60 disabled:opacity-50"
+                disabled={availableUsers.length === 0}
+              >
+                <option value="">{availableUsers.length ? 'Select a user…' : 'all users mapped'}</option>
+                {availableUsers.map((u) => <option key={u} value={u}>{u}</option>)}
+              </select>
+            ) : (
+              <Input value={newUser} onChange={(e) => setNewUser(e.target.value)} placeholder="plexuser" />
+            )}
+          </Field>
           <Field label="seenr token" hint="the part after /scrobble/plex/ in your seenr URL">
             <Input value={newToken} onChange={(e) => setNewToken(e.target.value)} placeholder="9%7CyourSeenrToken" />
           </Field>

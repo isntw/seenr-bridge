@@ -26,6 +26,8 @@ export const api = {
   testTautulli: (s?: Partial<Settings>) =>
     req<{ ok: boolean; message: string }>('/api/settings/test-tautulli', { method: 'POST', body: JSON.stringify(s || {}) }),
 
+  getTautulliUsers: () => req<{ ok: boolean; users: string[]; error?: string }>('/api/tautulli/users'),
+
   getMappings: () => req<Mapping[]>('/api/mappings'),
   saveMapping: (m: { username: string; seenr_token: string; enabled: boolean; sync_movies?: boolean; sync_episodes?: boolean }) =>
     req<Mapping>('/api/mappings', { method: 'POST', body: JSON.stringify(m) }),

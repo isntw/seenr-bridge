@@ -3,7 +3,7 @@ import {
   getSettings, saveSettings, listMappings, upsertMapping, deleteMapping,
   listEvents, getStats,
 } from './db';
-import { testConnection, syncSeenrWebhook, fetchImage, bridgeWebhookExists } from './tautulli';
+import { testConnection, syncSeenrWebhook, fetchImage, bridgeWebhookExists, getUsers } from './tautulli';
 import { processEvent } from './pipeline';
 import { requireAuth } from './auth';
 import { VERSION } from './version';
@@ -64,6 +64,17 @@ api.post('/settings/test-tautulli', async (req, res) => {
   const key = (req.body?.tautulli_apikey || s.tautulli_apikey || '').trim();
   if (!url || !key) return res.json({ ok: false, message: 'URL and API key required' });
   res.json(await testConnection(url, key));
+});
+
+// The Plex users Tautulli knows about — used to populate the username dropdown.
+api.get('/tautulli/users', async (_req, res) => {
+  const s = getSettings();
+  if (!s.tautulli_url || !s.tautulli_apikey) return res.json({ ok: false, users: [] });
+  try {
+    res.json({ ok: true, users: await getUsers(s.tautulli_url, s.tautulli_apikey) });
+  } catch (e: any) {
+    res.json({ ok: false, users: [], error: e?.message || String(e) });
+  }
 });
 
 // Create/update the single Webhook notifier in Tautulli, pointed back at this bridge.

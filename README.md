@@ -2,7 +2,7 @@
 
 A small self-hosted service that makes **Tautulli → [seenr](https://seenr.app)** scrobbling work correctly for **TV episodes and movies**, for **every Plex user** — with a web UI to set it up and watch it work.
 
-![version](https://img.shields.io/badge/version-1.0.0-8b5cf6)
+![version](https://img.shields.io/badge/version-1.0.1-8b5cf6)
 
 ![Seenr Bridge dashboard](docs/dashboard.png)
 
@@ -85,7 +85,7 @@ A guided, three-step flow:
 
 **1. Connect Tautulli** — enter your Tautulli URL (e.g. `http://tautulli:8181`) and API key (Tautulli → Settings → Web Interface → API key). Click **Test connection**, then **Save**.
 
-**2. Map users to seenr** — add one row per user: their Plex **username** and their seenr **token** (the part after `/scrobble/plex/` in that user's seenr webhook URL). Click a user's **Configure** to set what they sync (TV episodes / movies) or pause them.
+**2. Map users to seenr** — add one row per user: pick their Plex **username** from the dropdown (auto-populated from Tautulli once connected — or type it manually) and paste their seenr **token** (the part after `/scrobble/plex/` in that user's seenr webhook URL). Click a user's **Configure** to set what they sync (TV episodes / movies) or pause them.
 
 **3. Send Tautulli's events here** — pick which **triggers** to enable (**Watched** is the important one; Play/Stop/Pause/Resume are optional "now playing" events) and click **Sync to Tautulli**. That creates a single `Seenr Bridge` webhook notifier in Tautulli, pointed back at the bridge, with no per-user conditions.
 
@@ -128,6 +128,7 @@ All state (settings, users, mappings, event history) lives in **`./data/seenr-br
 | GET/PUT | `/api/settings` | ✓ | connection + advanced config |
 | GET | `/api/status` | ✓ | readiness (Tautulli, webhook, users) |
 | GET/POST/DELETE | `/api/mappings` | ✓ | per-user token + sync config |
+| GET | `/api/tautulli/users` | ✓ | Plex usernames for the mapping dropdown |
 | POST | `/api/tautulli/sync-webhook` | ✓ | create/update the Tautulli webhook |
 | GET | `/api/events` | ✓ | recent scrobbles (`?limit=`) |
 | GET | `/api/stats` | ✓ | dashboard counts |

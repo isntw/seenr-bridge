@@ -119,6 +119,17 @@ export async function bridgeWebhookExists(url: string, apiKey: string): Promise<
   return Array.isArray(notifiers) && notifiers.some((n: any) => n.friendly_name === BRIDGE_FRIENDLY_NAME && n.agent_name === 'webhook');
 }
 
+// Pull the list of Plex users Tautulli knows about, so the UI can offer them as
+// a dropdown instead of a free-text field. Skips the synthetic "Local" account.
+export async function getUsers(url: string, apiKey: string): Promise<string[]> {
+  const data = await tautulliApi(url, apiKey, 'get_users');
+  if (!Array.isArray(data)) return [];
+  const names = data
+    .map((u: any) => String(u?.username || '').trim())
+    .filter((name: string) => name && name.toLowerCase() !== 'local');
+  return Array.from(new Set(names)).sort((a, b) => a.localeCompare(b));
+}
+
 export async function testConnection(url: string, apiKey: string): Promise<{ ok: boolean; message: string }> {
   try {
     const u = `${base(url)}/api/v2?apikey=${encodeURIComponent(apiKey)}&cmd=get_server_info`;

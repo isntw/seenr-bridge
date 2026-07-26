@@ -1028,7 +1028,18 @@ Both are thin I/O wrappers over `fetch` with no branching logic worth unit-testi
 Copy `legacy/server/src/tautulli.ts` in full. Changes:
 
 1. Delete the local `TautulliMetadata` interface (lines 4–19) and instead `import type { TautulliMetadata } from '../../shared/types'`.
-2. Keep everything else byte-identical: `base()`, `getMetadata()`, `WEBHOOK_AGENT_ID = 25`, `BRIDGE_FRIENDLY_NAME = 'Seenr Bridge'`, `tautulliApi()`, `syncSeenrWebhook()`, `fetchImage()`, `bridgeWebhookExists()`, `getUsers()`, `testConnection()`.
+2. Keep the same behaviour and the same exported surface: `base()`, `getMetadata()`, `WEBHOOK_AGENT_ID = 25`, `BRIDGE_FRIENDLY_NAME = 'Seenr Bridge'`, `tautulliApi()`, `syncSeenrWebhook()`, `fetchImage()`, `bridgeWebhookExists()`, `getUsers()`, `testConnection()`.
+3. **Do not carry over the legacy `as any` casts on `res.json()`.** The global "port the logic, not the warts" constraint applies here as it does everywhere. Tautulli's API responses are untyped JSON, so model that honestly instead of switching off the checker: declare a narrow response shape and assert to it, e.g.
+
+```ts
+interface TautulliResponse<T> {
+  response?: { result?: string; message?: string; data?: T }
+}
+
+const json = (await res.json()) as TautulliResponse<TautulliMetadata>
+```
+
+`unknown` plus a narrowing check is also fine. What is not fine is `as any`, which silently disables checking on every downstream property access.
 
 The `syncSeenrWebhook` trigger loop matters and must not be simplified — it writes `on_<action> = 0` for unselected triggers so a re-sync is authoritative, and populates body/headers for all five actions so any trigger works if enabled later.
 

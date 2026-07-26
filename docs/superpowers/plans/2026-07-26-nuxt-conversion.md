@@ -104,10 +104,17 @@ Let npm resolve versions rather than hand-pinning them.
 ```bash
 npm init -y
 npm pkg set name=seenr-bridge private=true type=module
-npm pkg delete main version
+# npm init -y copies boilerplate from the repo (a markdown description lifted
+# from README.md, an invented license, empty author, repository/bugs/homepage).
+# None of it belongs in this manifest.
+npm pkg delete main version description keywords author license repository bugs homepage directories
 npm install nuxt@^4 @nuxt/ui@^4 @pinia/nuxt pinia tailwindcss better-sqlite3
-npm install -D typescript vue-tsc vitest @types/better-sqlite3
+npm install -D typescript vue-tsc vitest @types/better-sqlite3 @iconify-json/lucide
 ```
+
+`@iconify-json/lucide` is not optional. Nuxt UI v4's own components (dropdown chevrons, checkboxes, the close button on modals) reference `lucide:*` icons. Without the collection installed locally, Nuxt Icon logs a warning for ~40 icons at build time and falls back to fetching them from the public Iconify API in the user's browser at runtime — unacceptable for a self-hosted LAN tool that may have no outbound internet access.
+
+If `npm install` fails with an arborist crash or a peer-dependency conflict, pin the majors that `@nuxt/ui` requires rather than reaching for `--legacy-peer-deps`; a lockfile built with legacy peer resolution can produce a duplicated `@nuxt/kit` tree that breaks `nuxt dev`. Verify afterwards that exactly one `@nuxt/kit` version is installed.
 
 - [ ] **Step 3: Add the npm scripts**
 
@@ -271,11 +278,25 @@ export default defineConfig({
     environment: 'node',
     include: ['tests/**/*.spec.ts'],
     // better-sqlite3 handles are process-global; parallel files fight over
-    // the same DATA_DIR. One fork at a time keeps DB tests deterministic.
-    poolOptions: { forks: { singleFork: true } },
+    // the same DATA_DIR. Running test files one at a time keeps DB tests
+    // deterministic.
+    //
+    // NOTE: `poolOptions: { forks: { singleFork: true } }` was the Vitest 2/3
+    // spelling and was REMOVED in Vitest 4 — it is silently ignored there,
+    // so the isolation guarantee would not apply. `fileParallelism: false`
+    // is the current top-level option and is what this project needs.
+    fileParallelism: false,
   },
 })
 ```
+
+Verify the config is actually honoured rather than silently ignored:
+
+```bash
+npx vitest run 2>&1 | grep -i deprecat || echo "no deprecation warnings"
+```
+
+Expected: `no deprecation warnings`. (`No test files found` is expected at this point and is not a failure of this step.)
 
 - [ ] **Step 11: Update ignore files**
 

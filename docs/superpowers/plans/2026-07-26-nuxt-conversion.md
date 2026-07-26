@@ -368,7 +368,9 @@ git commit -m "feat: scaffold Nuxt 4 app, park legacy source, verify better-sqli
 
 **Interfaces:**
 - Consumes: `useDb()`, `closeDb()` from Task 1.
-- Produces: from `shared/types/index.ts` — `Settings`, `Mapping`, `ScrobbleEvent`, `Stats`, `Status`, `AuthStatus`, `TestResult`, `SyncResult`, `TautulliMetadata`, `IncomingEvent`, `ProcessResult`. From `server/utils/db.ts` — `SettingsRow`, `MappingRow`, `EventRowDb`, `User`, `getSettings()`, `saveSettings()`, `settingsToWire()`, `listMappings()`, `getMappingByUsername()`, `upsertMapping()`, `deleteMapping()`, `mappingToWire()`, `insertEvent()`, `listEvents()`, `eventToWire()`, `getStats()`, `countUsers()`, `createUser()`, `getUserByUsername()`, `getUserById()`, `createSession()`, `getSession()`, `deleteSession()`, `updateUserPassword()`, `deleteUserSessions()`.
+- Produces: from `shared/types/index.ts` — `Settings`, `Mapping`, `ScrobbleEvent`, `Stats`, `Status`, `AuthStatus`, `TestResult`, `SyncResult`, `TautulliMetadata`, `IncomingEvent`, `ProcessResult`. From `server/utils/db.ts` — `SettingsRow`, `MappingRow`, `EventRowDb`, `User`, `getSettings()`, `saveSettings()`, `settingsToWire()`, `listMappings()`, `getMappingByUsername()`, `upsertMapping()`, `deleteMapping()`, `mappingToWire()`, `insertEvent()`, `listEvents()`, `eventToWire()`, `getStats()`, `countUsers()`, `createUser()`, `getUserByUsername()`, `getUserById()`, `createSession()`, `getSessionByToken()`, `deleteSession()`, `updateUserPassword()`, `deleteUserSessions()`.
+
+**Naming note:** the session lookup is `getSessionByToken`, **not** `getSession`. h3 auto-imports its own `getSession(event, config)` into every Nitro module, so exporting `getSession` from `server/utils/db.ts` shadows it globally and emits `WARN Duplicated imports "getSession", the one from "h3" has been ignored`. Any later handler that wanted h3's real session helper would silently get the database one instead. `getSessionByToken` also describes the function accurately — it takes a token, not an event.
 
 Note the naming: the wire type is `ScrobbleEvent` and the DB row is `EventRowDb`. This avoids colliding with the `EventRow.vue` component built in Task 13.
 
@@ -1282,7 +1284,7 @@ git commit -m "feat: port enrichment pipeline with branch coverage tests"
 - Reference: `legacy/server/src/auth.ts`
 
 **Interfaces:**
-- Consumes: `getSession`, `getUserById`, `createSession` from `./db`.
+- Consumes: `getSessionByToken`, `getUserById`, `createSession` from `./db`.
 - Produces: `SESSION_COOKIE: string`, `hashPassword(pw: string): string`, `verifyPassword(pw: string, stored: string): boolean`, `currentUser(event: H3Event): User | undefined`, `setSession(event: H3Event, userId: number): void`, `clearSession(event: H3Event): void`, `PUBLIC_API_PATHS: Set<string>`.
 
 - [ ] **Step 1: Write `server/utils/auth.ts`**
@@ -1293,7 +1295,7 @@ The crypto is carried over from `legacy/server/src/auth.ts` unchanged. What goes
 import crypto from 'node:crypto'
 import type { H3Event } from 'h3'
 import { getCookie, setCookie, deleteCookie } from 'h3'
-import { getSession, getUserById, createSession, type User } from './db'
+import { getSessionByToken, getUserById, createSession, type User } from './db'
 
 export const SESSION_COOKIE = 'sb_session'
 const MAX_AGE = 60 * 60 * 24 * 30 // 30 days
@@ -1315,7 +1317,7 @@ export function verifyPassword(pw: string, stored: string): boolean {
 export function currentUser(event: H3Event): User | undefined {
   const token = getCookie(event, SESSION_COOKIE)
   if (!token) return undefined
-  const sess = getSession(token)
+  const sess = getSessionByToken(token)
   return sess ? getUserById(sess.user_id) : undefined
 }
 

@@ -317,7 +317,12 @@ export function createSession(user_id: number): string {
   return token
 }
 
-export function getSession(token: string): { user_id: number } | undefined {
+// Named getSessionByToken, not getSession: h3 auto-imports its own
+// getSession(event, config) into every Nitro module, so exporting `getSession`
+// here shadows it globally and any handler wanting h3's session helper would
+// silently get this one instead. The name is also more accurate — this takes a
+// token, not an event.
+export function getSessionByToken(token: string): { user_id: number } | undefined {
   return useDb().prepare('SELECT user_id FROM sessions WHERE token = ?').get(token) as
     | { user_id: number }
     | undefined

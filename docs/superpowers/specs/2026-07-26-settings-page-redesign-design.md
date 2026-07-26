@@ -153,10 +153,26 @@ labelled `USwitch`.
 
 ## Step 2: the ordering hint
 
-With the webhook now in step 1, a first-run user configures forwarding *before* mapping anyone, so
-early events land as `skipped`. Rather than reorder the steps (the causal dependency runs the other
-way), step 2 carries a one-line hint that events arriving before a user is mapped are recorded as
-skipped and visible on the Dashboard.
+With the webhook now in step 1, a first-run user configures forwarding *before* mapping anyone.
+Rather than reorder the steps (the causal dependency runs the other way), step 2 carries a one-line
+hint about what happens to that early playback.
+
+**Corrected after review.** An earlier draft of this section said such events "are recorded as
+`skipped` and visible on the Dashboard". That is false, and `server/utils/pipeline.ts` is the
+authority: `processEvent()` returns `{ ok: false, skipped: true }` at the mapping lookup
+(`pipeline.ts:94-96`) **without calling `insertEvent`**, so no row is written. Separately, the
+`events` table stores only a boolean `ok` — it has no "skipped" state — and
+`app/components/EventRow.vue` renders only "checked in", "seenr &lt;status&gt;", or "failed", never
+the word "skipped". `skipped` exists solely on the `ProcessResult` type, which the Test panel
+consumes.
+
+So the hint must say that unmapped playback is **silently ignored** — nothing forwarded, nothing
+recorded, nothing on the Dashboard. Promising a "skipped" badge would send a new user hunting for
+something that never appears.
+
+Recording such skips as real event rows would be a genuine improvement — it would turn "someone
+played something but isn't mapped yet" into visible feedback — but it changes pipeline behaviour and
+touches `tests/pipeline.spec.ts`, so it is **out of scope here** and noted as a follow-up.
 
 ## Test a scrobble
 
@@ -325,7 +341,12 @@ runner.
     argued for the opposite order. That reasoning applies to a fixed bottom bar, not to buttons
     sitting mid-page in a scrolling form, and it contradicted the ordering specified everywhere else
     in this document. **Primary-on-top governs.**
-- Mapped-user rows stack: username and `Configure` on the first line, token + sync summary beneath.
+- Mapped-user rows stack: username (+ any `paused` badge) first, token + sync summary beneath, then
+  `Configure` below both as a left-aligned button.
+  - An earlier draft claimed `Configure` shared the first line with the username. It never did —
+    neither before nor after the redesign — because the row is a single `flex-col` whose button is
+    its last child. Corrected to match the markup rather than changing the markup, since the current
+    stacking is not a regression and was not in this redesign's scope.
 - Trigger chips wrap; they are already sized for touch.
 - The `More` divider and its two cards are unchanged in structure across breakpoints.
 

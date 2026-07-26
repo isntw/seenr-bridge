@@ -27,9 +27,9 @@ function isTriggerSelected(key: string) {
   return selectedTriggers.value.includes(key)
 }
 
-// UCheckbox has no built-in array-group mode outside UCheckboxGroup, so a
-// shared v-model across sibling checkboxes would fight itself. Each checkbox
-// derives its own checked state from the array and toggles membership.
+// Chips are aria-pressed buttons rather than checkboxes, so each derives its own
+// pressed state from the array and toggles membership. A shared v-model across
+// siblings would fight itself.
 function toggleTrigger(key: string, checked: boolean) {
   if (checked) {
     if (!selectedTriggers.value.includes(key)) selectedTriggers.value.push(key)
@@ -77,6 +77,17 @@ function syncSummary(m: Mapping) {
   if (m.sync_movies) return 'Movies only'
   return 'nothing selected'
 }
+
+// Sub-section pills read the same polled status the header and sidebar use — no
+// extra request path is introduced.
+const connStatus = computed<'ok' | 'bad' | 'pending'>(() =>
+  status.tautulli === null ? 'pending' : status.tautulli.ok ? 'ok' : 'bad',
+)
+const connStatusText = computed(() =>
+  status.tautulli === null ? 'checking…' : status.tautulli.ok ? 'connected' : 'unreachable',
+)
+const hookStatus = computed<'ok' | 'bad'>(() => (status.webhook ? 'ok' : 'bad'))
+const hookStatusText = computed(() => (status.webhook ? 'active' : 'not set up'))
 
 async function saveConnection() {
   saving.value = true
@@ -193,7 +204,7 @@ async function runTest(dryRun: boolean) {
 </script>
 
 <template>
-  <div v-if="store.settings" class="space-y-4">
+  <div v-if="store.settings" class="space-y-6">
     <!-- "Setup" on the left, the live status line on the right — the old page
          header. Both wrap rather than overflowing on narrow screens. -->
     <div class="flex flex-wrap items-center justify-between gap-3">
@@ -216,22 +227,105 @@ async function runTest(dryRun: boolean) {
       </div>
     </div>
 
-    <SetupStep :n="1" title="Connect Tautulli" hint="where the bridge reads episode IDs">
-      <div class="grid gap-4 sm:grid-cols-2">
-        <UFormField label="Tautulli URL" help="e.g. http://tautulli:8181">
-          <UInput v-model="store.settings.tautulli_url" placeholder="http://tautulli:8181" class="w-full" />
-        </UFormField>
-        <UFormField label="API key" help="Tautulli → Settings → Web Interface → API key">
-          <UInput v-model="store.settings.tautulli_apikey" type="password" placeholder="xxxxxxxx" class="w-full" />
-        </UFormField>
-      </div>
-      <div class="mt-4 flex flex-wrap gap-3">
-        <UButton color="neutral" variant="subtle" label="Test connection" class="min-h-11" @click="testConnection" />
-        <UButton :loading="saving" label="Save" class="min-h-11" @click="saveConnection" />
-      </div>
+    <SetupStep :n="1" title="Tautulli" hint="the source — where playback happens and episode IDs come from">
+      <SetupSubsection label="Connection" :status="connStatus" :status-text="connStatusText">
+        <div class="grid gap-4 sm:grid-cols-2 sm:items-end">
+          <UFormField label="Tautulli URL">
+            <UInput v-model="store.settings.tautulli_url" placeholder="http://tautulli:8181" class="w-full" />
+          </UFormField>
+          <UFormField label="API key">
+            <UInput v-model="store.settings.tautulli_apikey" type="password" placeholder="xxxxxxxx" class="w-full" />
+          </UFormField>
+        </div>
+        <!-- Group-level, not per-field: a `help` on one UFormField and not its
+             sibling makes that grid cell taller and the row ragged. Keeping the
+             hints here is what lets the grid align on items-end. -->
+        <p class="text-xs text-dimmed">
+          URL e.g. <code class="text-default">http://tautulli:8181</code> · key from Tautulli →
+          Settings → Web Interface → API key
+        </p>
+        <div class="flex flex-col gap-3 border-t border-default pt-4 sm:flex-row sm:justify-end">
+          <!-- Mobile stacks primary-first: the bottom-most control is the easiest
+               thumb reach, so `order` puts Save there below sm. -->
+          <UButton
+            color="neutral"
+            variant="subtle"
+            label="Test connection"
+            class="min-h-11 justify-center order-2 sm:order-1"
+            @click="testConnection"
+          />
+          <UButton
+            :loading="saving"
+            label="Save"
+            class="min-h-11 justify-center order-1 sm:order-2"
+            @click="saveConnection"
+          />
+        </div>
+      </SetupSubsection>
+
+      <SetupSubsection label="Event webhook" :status="hookStatus" :status-text="hookStatusText" seam>
+        <p class="text-xs text-dimmed">
+          One webhook in Tautulli covers every user. <strong class="text-default">Watched</strong> is
+          the recommended trigger.
+        </p>
+        <div class="flex flex-wrap gap-2">
+          <!-- Chips, not checkboxes: the `recommended` badge used to be passed as
+               #description to the Watched checkbox, which made that one row
+               taller than its four siblings. The badge now folds into the
+               selected state and the recommendation moved to the line above. -->
+          <button
+            v-for="t in TRIGGERS"
+            :key="t.key"
+            type="button"
+            :aria-pressed="isTriggerSelected(t.key)"
+            class="min-h-11 rounded-lg px-3.5 text-sm ring-1 transition-colors"
+            :class="isTriggerSelected(t.key)
+              ? 'bg-primary-600/20 text-primary-200 ring-primary-400/40'
+              : 'bg-default text-muted ring-default hover:text-default'"
+            @click="toggleTrigger(t.key, !isTriggerSelected(t.key))"
+          >
+            {{ t.label }}
+          </button>
+        </div>
+        <div class="flex border-t border-default pt-4 sm:justify-end">
+          <UButton
+            :loading="syncing"
+            label="Sync to Tautulli"
+            class="min-h-11 w-full justify-center sm:w-auto"
+            @click="runSync"
+          />
+        </div>
+
+        <!-- Chrome-less on purpose. This is an alternative to the Sync button
+             directly above it, not a third page-level section, so it gets no
+             card background, ring or radius — unlike Advanced and Test, which
+             use DisclosureCard. -->
+        <UCollapsible v-model:open="manual" class="border-t border-default pt-2">
+          <UButton color="neutral" variant="ghost" class="w-full min-h-11 justify-start gap-2.5 px-0">
+            <UIcon
+              name="i-lucide-chevron-right"
+              class="size-4 shrink-0 text-muted transition-transform"
+              :class="manual ? 'rotate-90' : ''"
+            />
+            <span class="text-sm font-medium text-highlighted">Set it up manually instead</span>
+          </UButton>
+          <template #content>
+            <div class="space-y-4 pt-2">
+              <CopyField label="Webhook URL" :value="webhookUrl" />
+              <CopyField label="Method" value="POST" />
+              <CopyField label="Headers" :value="'{&quot;Content-Type&quot;: &quot;application/json&quot;}'" />
+              <CopyField
+                label="JSON body"
+                :value="'{&quot;action&quot;: &quot;{action}&quot;, &quot;rating_key&quot;: &quot;{rating_key}&quot;, &quot;username&quot;: &quot;{username}&quot;}'"
+                hint="Paste into a Tautulli Webhook agent for each trigger you enable."
+              />
+            </div>
+          </template>
+        </UCollapsible>
+      </SetupSubsection>
     </SetupStep>
 
-    <SetupStep :n="2" title="Map users to seenr" hint="each Plex user → their seenr token">
+    <SetupStep :n="2" title="seenr users" hint="each Plex user → their seenr token">
       <div class="space-y-2">
         <p v-if="!store.mappings.length" class="text-sm text-muted">No users yet. Add one below.</p>
 
@@ -299,54 +393,11 @@ async function runTest(dryRun: boolean) {
       </div>
     </SetupStep>
 
-    <SetupStep :n="3" title="Send Tautulli's events here" hint="one webhook, covers every user">
-      <div class="mb-4">
-        <div class="mb-2.5 text-sm font-medium">Triggers to enable</div>
-        <div class="flex flex-wrap gap-x-5 gap-y-3">
-          <UCheckbox
-            v-for="t in TRIGGERS"
-            :key="t.key"
-            :model-value="isTriggerSelected(t.key)"
-            :label="t.label"
-            class="min-h-11 items-center"
-            @update:model-value="(v) => toggleTrigger(t.key, v === true)"
-          >
-            <template v-if="t.recommended" #description>
-              <UBadge color="success" variant="subtle" size="sm" label="recommended" />
-            </template>
-          </UCheckbox>
-        </div>
-      </div>
-
-      <UButton :loading="syncing" label="Sync to Tautulli" class="min-h-11" @click="runSync" />
-
-      <!-- Old design: a collapsible is a card whose header *is* the toggle, with
-           a chevron that rotates open — not a bare text button on the page. -->
-      <UCard :ui="{ body: 'p-0 sm:p-0' }" class="mt-4">
-        <UCollapsible v-model:open="manual">
-          <UButton color="neutral" variant="ghost" class="w-full min-h-11 gap-2.5 px-5 py-3.5">
-            <UIcon
-              name="i-lucide-chevron-right"
-              class="size-4 shrink-0 text-muted transition-transform"
-              :class="manual ? 'rotate-90' : ''"
-            />
-            <span class="text-sm font-semibold text-highlighted">Set it up manually instead</span>
-          </UButton>
-          <template #content>
-            <div class="space-y-4 border-t border-default p-5">
-              <CopyField label="Webhook URL" :value="webhookUrl" />
-              <CopyField label="Method" value="POST" />
-              <CopyField label="Headers" :value="'{&quot;Content-Type&quot;: &quot;application/json&quot;}'" />
-              <CopyField
-                label="JSON body"
-                :value="'{&quot;action&quot;: &quot;{action}&quot;, &quot;rating_key&quot;: &quot;{rating_key}&quot;, &quot;username&quot;: &quot;{username}&quot;}'"
-                hint="Paste into a Tautulli Webhook agent for each trigger you enable."
-              />
-            </div>
-          </template>
-        </UCollapsible>
-      </UCard>
-    </SetupStep>
+    <div class="flex items-center gap-3 pt-2">
+      <hr class="flex-1 border-muted" />
+      <span class="text-xs uppercase tracking-wider text-dimmed">More</span>
+      <hr class="flex-1 border-muted" />
+    </div>
 
     <DisclosureCard v-model:open="advanced" title="Advanced" summary="forwarding · seenr URL · bridge URL">
       <div class="flex items-center justify-between gap-3">

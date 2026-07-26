@@ -348,58 +348,24 @@ async function runTest(dryRun: boolean) {
       </UCard>
     </SetupStep>
 
-    <UCard :ui="{ body: 'p-0 sm:p-0' }">
-      <UCollapsible v-model:open="advanced">
-        <UButton color="neutral" variant="ghost" class="w-full min-h-11 gap-2.5 px-5 py-3.5">
-          <UIcon
-            name="i-lucide-chevron-right"
-            class="size-4 shrink-0 text-muted transition-transform"
-            :class="advanced ? 'rotate-90' : ''"
-          />
-          <span class="text-sm font-semibold text-highlighted">Advanced</span>
-          <span class="ml-auto hidden text-xs text-dimmed sm:block">
-            forwarding · seenr URL · bridge URL
-          </span>
-        </UButton>
-        <template #content>
-          <div class="space-y-4 border-t border-default p-5">
-            <div class="flex items-center justify-between gap-3">
-              <div class="min-w-0">
-                <div class="text-sm font-medium">Forward to seenr</div>
-                <p class="text-xs text-muted">Master switch for all forwarding.</p>
-              </div>
-              <USwitch v-model="store.settings.forward_enabled" />
-            </div>
-            <UFormField label="seenr base URL" help="each user's token is appended to this">
-              <UInput v-model="store.settings.seenr_base_url" class="w-full" />
-            </UFormField>
-            <UFormField
-              label="Bridge public URL"
-              help="blank = auto-detect; set only behind a reverse proxy"
-            >
-              <UInput v-model="store.settings.bridge_url" placeholder="https://bridge.example.com" class="w-full" />
-            </UFormField>
-            <UButton label="Save" class="min-h-11" @click="saveAdvanced" />
-          </div>
-        </template>
-      </UCollapsible>
-    </UCard>
+    <DisclosureCard v-model:open="advanced" title="Advanced" summary="forwarding · seenr URL · bridge URL">
+      <div class="flex items-center justify-between gap-3">
+        <div class="min-w-0">
+          <div class="text-sm font-medium">Forward to seenr</div>
+          <p class="text-xs text-muted">Master switch for all forwarding.</p>
+        </div>
+        <USwitch v-model="store.settings.forward_enabled" />
+      </div>
+      <UFormField label="seenr base URL" help="each user's token is appended to this">
+        <UInput v-model="store.settings.seenr_base_url" class="w-full" />
+      </UFormField>
+      <UFormField label="Bridge public URL" help="blank = auto-detect; set only behind a reverse proxy">
+        <UInput v-model="store.settings.bridge_url" placeholder="https://bridge.example.com" class="w-full" />
+      </UFormField>
+      <UButton label="Save" class="min-h-11" @click="saveAdvanced" />
+    </DisclosureCard>
 
-    <UCard :ui="{ body: 'p-0 sm:p-0' }">
-      <UCollapsible v-model:open="testPanel">
-        <UButton color="neutral" variant="ghost" class="w-full min-h-11 gap-2.5 px-5 py-3.5">
-          <UIcon
-            name="i-lucide-chevron-right"
-            class="size-4 shrink-0 text-muted transition-transform"
-            :class="testPanel ? 'rotate-90' : ''"
-          />
-          <span class="text-sm font-semibold text-highlighted">Test a scrobble</span>
-          <span class="ml-auto hidden text-xs text-dimmed sm:block">
-            send a rating_key through the pipeline
-          </span>
-        </UButton>
-        <template #content>
-          <div class="space-y-4 border-t border-default p-5">
+    <DisclosureCard v-model:open="testPanel" title="Test a scrobble" summary="send a rating_key through the pipeline">
             <p class="text-xs text-muted">
               Runs a <code class="text-default">rating_key</code> through the same pipeline as a
               real Tautulli webhook — useful for checking id matching without waiting for playback.
@@ -497,10 +463,7 @@ async function runTest(dryRun: boolean) {
                 class="max-h-64 overflow-auto rounded-lg bg-default p-3 text-xs ring-1 ring-default"
               >{{ testResultPayload }}</pre>
             </div>
-          </div>
-        </template>
-      </UCollapsible>
-    </UCard>
+    </DisclosureCard>
 
     <UModal
       :open="!!edit"

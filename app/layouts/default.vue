@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { VERSION } from '../../shared/version'
 
+const auth = useAuthStore()
 const drawer = ref(false)
 const route = useRoute()
 
@@ -45,7 +46,7 @@ const title = computed(() => (route.path === '/settings' ? 'Settings' : 'Dashboa
           />
           <h1 class="truncate text-base font-semibold">{{ title }}</h1>
         </div>
-        <AccountMenu :username="null" @logout="() => {}" />
+        <AccountMenu :username="auth.username" @logout="auth.logout" />
       </header>
 
       <main class="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-8">

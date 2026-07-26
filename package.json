@@ -1,0 +1,31 @@
+{
+  "name": "seenr-bridge",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "preview": "nuxt preview",
+    "start": "node .output/server/index.mjs",
+    "typecheck": "nuxt typecheck && npm run typecheck:tests",
+    "typecheck:tests": "vue-tsc --noEmit -p tsconfig.test.json",
+    "postinstall": "nuxt prepare",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@nuxt/ui": "^4.10.0",
+    "@pinia/nuxt": "^1.0.1",
+    "better-sqlite3": "^13.0.1",
+    "nuxt": "^4.5.0",
+    "pinia": "^4.0.2",
+    "tailwindcss": "^4.3.3"
+  },
+  "devDependencies": {
+    "@iconify-json/lucide": "^1.2.120",
+    "@types/better-sqlite3": "^7.6.13",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10",
+    "vue-tsc": "^3.3.8"
+  }
+}

@@ -1,9 +1,6 @@
-# Builds the image from source (for development or if you'd rather not pull).
-#   docker compose -f docker-compose.build.yml up -d --build
 services:
   seenr-bridge:
     build: .
-    image: ghcr.io/isntw/seenr-bridge:latest
     container_name: seenr-bridge
     restart: unless-stopped
     ports:
@@ -11,5 +8,4 @@ services:
     volumes:
       - ./data:/app/data
     environment:
-      - PORT=8687
       - TZ=Etc/UTC

@@ -5,8 +5,10 @@ export default defineEventHandler(async (event) => {
   const imgPath = String(getQuery(event).path || '')
 
   // Only ever proxy Plex metadata art. Without this the endpoint becomes an
-  // open proxy authenticated with the user's Tautulli API key.
-  if (!imgPath.startsWith('/library/metadata/')) {
+  // open proxy authenticated with the user's Tautulli API key. The `..`
+  // check closes the obvious pivot (e.g. /library/metadata/../../status/sessions
+  // would otherwise pass the prefix check above).
+  if (!imgPath.startsWith('/library/metadata/') || imgPath.includes('..')) {
     throw createError({ statusCode: 400, statusMessage: 'invalid image path' })
   }
 

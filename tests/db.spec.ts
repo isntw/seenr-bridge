@@ -77,6 +77,42 @@ describe('events', () => {
   })
 })
 
+describe('session expiry', () => {
+  it('resolves a freshly created session', async () => {
+    const db = await freshDb()
+    const token = db.createSession(1)
+    expect(db.getSessionByToken(token)).toEqual({ user_id: 1 })
+  })
+
+  it('does not resolve a session whose created timestamp is older than the TTL window', async () => {
+    const db = await freshDb()
+    const token = 'a'.repeat(64)
+    const staleCreated = Date.now() - db.SESSION_TTL_SECONDS * 1000 - 1000
+    db.useDb()
+      .prepare('INSERT INTO sessions (token, user_id, created) VALUES (?, ?, ?)')
+      .run(token, 1, staleCreated)
+
+    expect(db.getSessionByToken(token)).toBeUndefined()
+  })
+
+  it('cleans up expired rows opportunistically when a new session is created', async () => {
+    const db = await freshDb()
+    const staleToken = 'b'.repeat(64)
+    const staleCreated = Date.now() - db.SESSION_TTL_SECONDS * 1000 - 1000
+    db.useDb()
+      .prepare('INSERT INTO sessions (token, user_id, created) VALUES (?, ?, ?)')
+      .run(staleToken, 1, staleCreated)
+
+    db.createSession(2)
+
+    const remaining = db
+      .useDb()
+      .prepare('SELECT token FROM sessions')
+      .all() as { token: string }[]
+    expect(remaining.some((r) => r.token === staleToken)).toBe(false)
+  })
+})
+
 describe('wire conversion', () => {
   // All three *ToWire helpers need coverage: this boundary is the only thing
   // stopping a raw 0/1 reaching the client, so an untested helper is an

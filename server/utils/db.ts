@@ -309,8 +309,20 @@ export function getUserById(id: number): User | undefined {
   return useDb().prepare('SELECT * FROM users WHERE id = ?').get(id) as User | undefined
 }
 
+// Sessions are valid for this long after creation. server/utils/auth.ts's
+// session cookie Max-Age is derived from this same constant so the two
+// cannot drift apart.
+export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30 // 30 days
+
+function sessionCutoff(): number {
+  return Date.now() - SESSION_TTL_SECONDS * 1000
+}
+
 export function createSession(user_id: number): string {
   const token = crypto.randomBytes(32).toString('hex')
+  // Opportunistic cleanup, same shape as insertEvent's MAX_EVENTS trim: every
+  // new session prunes rows that aged out, rather than running a scheduler.
+  useDb().prepare('DELETE FROM sessions WHERE created <= ?').run(sessionCutoff())
   useDb()
     .prepare('INSERT INTO sessions (token, user_id, created) VALUES (?, ?, ?)')
     .run(token, user_id, Date.now())
@@ -323,9 +335,9 @@ export function createSession(user_id: number): string {
 // silently get this one instead. The name is also more accurate — this takes a
 // token, not an event.
 export function getSessionByToken(token: string): { user_id: number } | undefined {
-  return useDb().prepare('SELECT user_id FROM sessions WHERE token = ?').get(token) as
-    | { user_id: number }
-    | undefined
+  return useDb()
+    .prepare('SELECT user_id FROM sessions WHERE token = ? AND created > ?')
+    .get(token, sessionCutoff()) as { user_id: number } | undefined
 }
 
 export function deleteSession(token: string): void {

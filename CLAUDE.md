@@ -17,7 +17,7 @@ Plex ──play──▶ Tautulli ──webhook {rating_key, username, action}�
 
 ## Commands
 
-There is **no linter** in this repo — `nuxt typecheck` (wrapping `tsc`/`vue-tsc`) is the only static check, and Vitest is the only test runner.
+There is **no linter** in this repo — `npm run typecheck` is the only static check, and Vitest is the only test runner.
 
 ```bash
 npm install
@@ -25,9 +25,10 @@ npm run dev         # nuxt dev, single process, http://localhost:8687
 npm run build        # nuxt build → .output/ (bundled Nitro server + static client)
 npm run preview       # preview the .output/ build
 npm start            # node .output/server/index.mjs — runs a prior build
-npm test              # vitest run — tests/**/*.spec.ts, 35 tests across 4 files
+npm test              # vitest run — tests/**/*.spec.ts, 38 tests across 4 files
 npm run test:watch     # vitest, watch mode
-npm run typecheck       # nuxt typecheck
+npm run typecheck       # nuxt typecheck (app/ + server/ + shared/) && typecheck:tests (tests/ + vitest.config.ts)
+npm run typecheck:tests  # vue-tsc -p tsconfig.test.json alone — tests/ isn't in nuxt's own generated tsconfig
 ```
 
 Everything — UI and API — is one process on one port (`8687` in dev and prod). There is no separate client dev server and no proxy config to keep in sync.

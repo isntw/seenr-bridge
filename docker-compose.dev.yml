@@ -13,7 +13,13 @@ services:
     volumes:
       - .:/app
       - node_modules:/app/node_modules
-    command: bash -lc "apt-get update -qq && apt-get install -y -qq python3 make g++ >/dev/null 2>&1; npm install && npm run dev -- --host 0.0.0.0"
+    # Same fix as the Dockerfile's build stage: the published better-sqlite3
+    # prebuild for linux-arm64 links against a newer glibc (2.38) than this
+    # bookworm-slim image ships (2.36) and fails to dlopen on arm64 hosts
+    # (Apple Silicon, Raspberry Pi). Force a from-source rebuild here too, or
+    # `npm install` alone leaves the incompatible prebuilt binding in place
+    # and the app crashes on the first DB touch.
+    command: bash -lc "apt-get update -qq && apt-get install -y -qq python3 make g++ >/dev/null 2>&1; npm install && rm -f node_modules/better-sqlite3/prebuilds/*.node && npm rebuild better-sqlite3 --build-from-source && npm run dev -- --host 0.0.0.0"
 
 volumes:
   node_modules:

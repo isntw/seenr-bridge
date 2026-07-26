@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Mapping } from '../../shared/types'
+import { apiErrorMessage } from '../../shared/errors'
 
 const store = useSettingsStore()
 const status = useStatusStore()
@@ -73,8 +74,7 @@ async function saveConnection() {
     status.refresh()
     store.fetchTautulliUsers().catch(() => {})
   } catch (e) {
-    const err = e as { data?: { statusMessage?: string } }
-    toast.add({ title: err.data?.statusMessage || 'Could not save.', color: 'error' })
+    toast.add({ title: apiErrorMessage(e, 'Could not save.'), color: 'error' })
   } finally {
     saving.value = false
   }
@@ -99,8 +99,7 @@ async function addMapping() {
     newToken.value = ''
     toast.add({ title: 'User mapped.', color: 'success' })
   } catch (e) {
-    const err = e as { data?: { statusMessage?: string } }
-    toast.add({ title: err.data?.statusMessage || 'Could not add user.', color: 'error' })
+    toast.add({ title: apiErrorMessage(e, 'Could not add user.'), color: 'error' })
   }
 }
 
@@ -134,8 +133,7 @@ async function runSync() {
     })
     status.refresh()
   } catch (e) {
-    const err = e as { data?: { statusMessage?: string } }
-    toast.add({ title: err.data?.statusMessage || 'Sync failed.', color: 'error' })
+    toast.add({ title: apiErrorMessage(e, 'Sync failed.'), color: 'error' })
   } finally {
     syncing.value = false
   }

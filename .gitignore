@@ -7,5 +7,3 @@ data/*.db-*
 .nuxt
 .output
 .data
-node_modules
-data

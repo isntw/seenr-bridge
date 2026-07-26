@@ -8,7 +8,8 @@
     "build": "nuxt build",
     "preview": "nuxt preview",
     "start": "node .output/server/index.mjs",
-    "typecheck": "nuxt typecheck",
+    "typecheck": "nuxt typecheck && npm run typecheck:tests",
+    "typecheck:tests": "vue-tsc --noEmit -p tsconfig.test.json",
     "postinstall": "nuxt prepare",
     "test:watch": "vitest"
   },

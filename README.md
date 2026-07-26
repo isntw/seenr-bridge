@@ -110,7 +110,7 @@ Account settings (change password, log out) live in the **account menu**, top-ri
 
 ## Security
 
-- The whole UI and API require login, **except** `/api/webhook/tautulli` (Tautulli can't authenticate) and `/api/health` + `/api/version`.
+- The whole UI and API require login, **except** `/api/webhook/tautulli` (Tautulli can't authenticate), `/api/health` + `/api/version`, and the auth flow itself — `/api/auth/status`, `/api/auth/login`, `/api/auth/register`, `/api/auth/logout` (a session is required for everything else, including `/api/auth/change-password`).
 - Passwords are hashed with scrypt. Sessions are httpOnly cookies.
 - Because the webhook endpoint is unauthenticated, keep the bridge on a trusted network. If you expose it publicly, put it behind a reverse proxy with its own protection.
 

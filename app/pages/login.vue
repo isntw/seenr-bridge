@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { VERSION } from '../../shared/version'
+import { apiErrorMessage } from '../../shared/errors'
 
 definePageMeta({ layout: false })
 
@@ -32,8 +33,7 @@ async function submit() {
     else await auth.login(username.value, password.value)
     await navigateTo('/dashboard')
   } catch (e) {
-    const err = e as { data?: { statusMessage?: string } }
-    error.value = err.data?.statusMessage || 'Something went wrong.'
+    error.value = apiErrorMessage(e, 'Something went wrong.')
   } finally {
     busy.value = false
   }

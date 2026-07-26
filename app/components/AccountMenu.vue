@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { apiErrorMessage } from '../../shared/errors'
+
 const props = defineProps<{ username: string | null }>()
 const emit = defineEmits<{ logout: [] }>()
 
@@ -32,8 +34,7 @@ async function submit() {
     open.value = false
     reset()
   } catch (e) {
-    const err = e as { data?: { statusMessage?: string } }
-    toast.add({ title: err.data?.statusMessage || 'Could not update password.', color: 'error' })
+    toast.add({ title: apiErrorMessage(e, 'Could not update password.'), color: 'error' })
   } finally {
     busy.value = false
   }

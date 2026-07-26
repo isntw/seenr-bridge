@@ -13,6 +13,9 @@ RUN npm ci
 # newer glibc (2.38) than bookworm ships (2.36) and fail to dlopen at runtime
 # on arm64 hosts (Apple Silicon, Raspberry Pi). Force a from-source rebuild so
 # the native binding actually loads regardless of build host architecture.
+# The amd64 prebuild would actually dlopen fine here (it links against glibc
+# 2.34, ≤ bookworm's 2.36) — rebuilding unconditionally on every architecture
+# is still the robust choice, so the extra CI time is accepted deliberately.
 RUN rm -f node_modules/better-sqlite3/prebuilds/*.node \
     && npm rebuild better-sqlite3 --build-from-source
 

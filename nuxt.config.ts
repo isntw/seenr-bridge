@@ -4,6 +4,13 @@ export default defineNuxtConfig({
   // Login-gated LAN admin panel: SSR buys nothing and complicates auth state.
   ssr: false,
 
+  app: {
+    head: {
+      title: 'Seenr Bridge',
+      htmlAttrs: { lang: 'en' },
+    },
+  },
+
   devServer: { port: 8687 },
 
   css: ['~/assets/css/main.css'],

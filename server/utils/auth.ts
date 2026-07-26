@@ -1,10 +1,13 @@
 import crypto from 'node:crypto'
 import type { H3Event } from 'h3'
 import { getCookie, setCookie, deleteCookie } from 'h3'
-import { getSessionByToken, getUserById, createSession, type User } from './db'
+import { getSessionByToken, getUserById, createSession, SESSION_TTL_SECONDS, type User } from './db'
 
 export const SESSION_COOKIE = 'sb_session'
-const MAX_AGE = 60 * 60 * 24 * 30 // 30 days
+// Derived from the same constant the DB uses to expire session rows
+// (server/utils/db.ts), so the cookie's Max-Age and the server-side window
+// cannot drift apart.
+const MAX_AGE = SESSION_TTL_SECONDS
 
 export function hashPassword(pw: string): string {
   const salt = crypto.randomBytes(16)

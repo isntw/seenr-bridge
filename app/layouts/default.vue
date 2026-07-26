@@ -2,6 +2,7 @@
 import { VERSION } from '../../shared/version'
 
 const auth = useAuthStore()
+const status = useStatusStore()
 const drawer = ref(false)
 const route = useRoute()
 
@@ -9,6 +10,9 @@ const route = useRoute()
 watch(() => route.path, () => (drawer.value = false))
 
 const title = computed(() => (route.path === '/settings' ? 'Settings' : 'Dashboard'))
+
+onMounted(() => status.start())
+onBeforeUnmount(() => status.stop())
 </script>
 
 <template>
@@ -22,7 +26,18 @@ const title = computed(() => (route.path === '/settings' ? 'Settings' : 'Dashboa
       <div class="mt-2 px-3">
         <AppNav />
       </div>
-      <div class="mt-auto p-3 text-center text-[11px] text-muted">v{{ VERSION }}</div>
+      <div class="mt-auto space-y-2 p-3">
+        <div class="flex items-center gap-2 rounded-lg bg-elevated/40 px-3 py-2.5">
+          <span
+            class="size-1.5 shrink-0 rounded-full"
+            :class="status.tautulli === null ? 'bg-muted' : status.tautulli.ok ? 'bg-success' : 'bg-error'"
+          />
+          <span class="truncate text-xs text-muted">
+            {{ status.tautulli === null ? 'Checking Tautulli…' : status.tautulli.ok ? 'Tautulli connected' : 'Tautulli unreachable' }}
+          </span>
+        </div>
+        <div class="text-center text-[11px] text-muted">v{{ VERSION }}</div>
+      </div>
     </aside>
 
     <!-- Off-canvas nav, below lg. -->

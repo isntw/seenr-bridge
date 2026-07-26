@@ -1,6 +1,7 @@
 <script setup lang="ts">
 const items = [
   { label: 'Dashboard', icon: 'i-lucide-layout-dashboard', to: '/dashboard' },
+  { label: 'Shared', icon: 'i-lucide-users-round', to: '/shared' },
   { label: 'Settings', icon: 'i-lucide-settings', to: '/settings' },
 ]
 </script>

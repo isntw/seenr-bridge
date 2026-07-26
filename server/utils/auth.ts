@@ -55,6 +55,16 @@ export const PUBLIC_API_PATHS = new Set([
   '/api/auth/logout',
 ])
 
+// @nuxt/icon serves the bundled icon collections from /api/_nuxt_icon/<name>.json
+// at runtime, so gating it means no icon renders on a page reachable without a
+// session — the login button's :loading spinner is one. The payload is static
+// open-source SVG data with nothing user-specific in it, so it is public.
+const ICON_PATH_PREFIX = '/api/_nuxt_icon/'
+// One plain segment only. A bare startsWith would also accept
+// /api/_nuxt_icon/%2e%2e/settings, which the gate sees literally (getRequestURL
+// normalises real `..` but not its encoded form) while the router may decode it.
+const ICON_COLLECTION = /^[a-zA-Z0-9._-]+$/
+
 // The middleware's full decision, extracted so it can be unit-tested without
 // constructing an H3Event. Non-/api/ paths pass through untouched (pages,
 // assets), public /api paths pass through unauthenticated, everything else
@@ -62,5 +72,8 @@ export const PUBLIC_API_PATHS = new Set([
 export function requiresAuth(path: string): boolean {
   if (!path.startsWith('/api/')) return false
   if (PUBLIC_API_PATHS.has(path)) return false
+  if (path.startsWith(ICON_PATH_PREFIX)) {
+    return !ICON_COLLECTION.test(path.slice(ICON_PATH_PREFIX.length))
+  }
   return true
 }

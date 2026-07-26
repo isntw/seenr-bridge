@@ -9,7 +9,12 @@ const route = useRoute()
 // Navigating from inside the drawer should close it.
 watch(() => route.path, () => (drawer.value = false))
 
-const title = computed(() => (route.path === '/settings' ? 'Settings' : 'Dashboard'))
+const TITLES: Record<string, string> = {
+  '/dashboard': 'Dashboard',
+  '/shared': 'Shared',
+  '/settings': 'Settings',
+}
+const title = computed(() => TITLES[route.path] ?? 'Dashboard')
 
 onMounted(() => status.start())
 onBeforeUnmount(() => status.stop())

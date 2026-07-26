@@ -25,7 +25,7 @@ export default defineNuxtConfig({
     // the app never hydrates and every page is blank. Prerendering each page route
     // emits a real index.html per route with the module script injected.
     // NOTE: adding a new page means adding its path here, or that page ships blank.
-    prerender: { routes: ['/', '/dashboard', '/settings', '/login'] },
+    prerender: { routes: ['/', '/dashboard', '/shared', '/settings', '/login'] },
     // better-sqlite3 ships a native .node binding. Bundling it breaks the
     // require path at runtime, so keep it external and resolved from disk.
     externals: { external: ['better-sqlite3'] },

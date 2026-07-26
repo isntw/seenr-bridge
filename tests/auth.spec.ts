@@ -98,6 +98,20 @@ describe('requiresAuth (middleware decision, extracted for testability)', () => 
   it('gates a protected /api path', () => {
     expect(requiresAuth('/api/settings')).toBe(true)
   })
+
+  // Icons are fetched from the server at runtime, so gating them means no icon
+  // renders anywhere reachable without a session (e.g. login's :loading spinner).
+  it('does not gate the icon collection endpoint', () => {
+    expect(requiresAuth('/api/_nuxt_icon/lucide.json')).toBe(false)
+    expect(requiresAuth('/api/_nuxt_icon/lucide')).toBe(false)
+  })
+
+  it('still gates anything under the icon prefix that is not a plain collection name', () => {
+    expect(requiresAuth('/api/_nuxt_icon/%2e%2e/settings')).toBe(true)
+    expect(requiresAuth('/api/_nuxt_icon/../settings')).toBe(true)
+    expect(requiresAuth('/api/_nuxt_icon/lucide/../../settings')).toBe(true)
+    expect(requiresAuth('/api/_nuxt_icon/')).toBe(true)
+  })
 })
 
 // Drives setSessionCookie through a real H3Event (Node req/res pair from a

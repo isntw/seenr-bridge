@@ -1,9 +1,7 @@
 {
   "name": "seenr-bridge",
-  "description": "A small self-hosted service that makes **Tautulli → [seenr](https://seenr.app)** scrobbling work correctly for **TV episodes and movies**, for **every Plex user** — with a web UI to set it up and watch it work.",
-  "directories": {
-    "doc": "docs"
-  },
+  "private": true,
+  "type": "module",
   "scripts": {
     "test": "vitest run",
     "dev": "nuxt dev",
@@ -14,19 +12,6 @@
     "postinstall": "nuxt prepare",
     "test:watch": "vitest"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/isntw/seenr-bridge.git"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "module",
-  "bugs": {
-    "url": "https://github.com/isntw/seenr-bridge/issues"
-  },
-  "homepage": "https://github.com/isntw/seenr-bridge#readme",
-  "private": true,
   "dependencies": {
     "@nuxt/ui": "^4.10.0",
     "@pinia/nuxt": "^1.0.1",
@@ -36,6 +21,7 @@
     "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
+    "@iconify-json/lucide": "^1.2.120",
     "@types/better-sqlite3": "^7.6.13",
     "typescript": "^6.0.3",
     "vitest": "^4.1.10",

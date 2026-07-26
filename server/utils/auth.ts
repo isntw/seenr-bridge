@@ -51,3 +51,13 @@ export const PUBLIC_API_PATHS = new Set([
   '/api/auth/register',
   '/api/auth/logout',
 ])
+
+// The middleware's full decision, extracted so it can be unit-tested without
+// constructing an H3Event. Non-/api/ paths pass through untouched (pages,
+// assets), public /api paths pass through unauthenticated, everything else
+// requires a session.
+export function requiresAuth(path: string): boolean {
+  if (!path.startsWith('/api/')) return false
+  if (PUBLIC_API_PATHS.has(path)) return false
+  return true
+}

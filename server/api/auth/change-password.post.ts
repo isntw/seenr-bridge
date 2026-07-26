@@ -2,9 +2,12 @@ import { currentUser, hashPassword, verifyPassword, setSessionCookie } from '../
 import { updateUserPassword, deleteUserSessions } from '../../utils/db'
 
 export default defineEventHandler(async (event) => {
-  // The auth middleware guarantees a session, so this is a type narrowing
-  // rather than a second auth check.
-  const user = currentUser(event)!
+  // The auth middleware guarantees a session; this guard just avoids
+  // depending on that invariant with a non-null assertion.
+  const user = currentUser(event)
+  if (!user) {
+    throw createError({ statusCode: 401, statusMessage: 'unauthorized' })
+  }
 
   const body = await readBody<{ current_password?: string; new_password?: string }>(event)
   const current = String(body?.current_password || '')

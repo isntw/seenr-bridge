@@ -22,7 +22,16 @@ export default defineEventHandler(async (event) => {
     action: String(action),
     rating_key: String(rating_key),
     username: String(username),
-  }).catch(() => {})
+  }).catch((err) => {
+    // processEvent already records its own failures to the events table;
+    // reaching this catch means that recording itself threw, so this is
+    // the only place left to leave a trace.
+    console.error('[webhook/tautulli] processEvent failed', {
+      rating_key: String(rating_key),
+      username: String(username),
+      error: err instanceof Error ? err.message : String(err),
+    })
+  })
 
   event.waitUntil(work)
 

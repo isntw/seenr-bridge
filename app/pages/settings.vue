@@ -443,64 +443,61 @@ async function runTest(dryRun: boolean) {
     </DisclosureCard>
 
     <DisclosureCard v-model:open="testPanel" title="Test a scrobble" summary="send a rating_key through the pipeline">
-            <p class="text-xs text-muted">
-              Runs a <code class="text-default">rating_key</code> through the same pipeline as a
-              real Tautulli webhook — useful for checking id matching without waiting for playback.
-            </p>
+      <p class="text-xs text-muted">
+        Sends one item down the same path a Tautulli webhook takes — good for checking ID matching
+        without waiting for playback.
+      </p>
 
-            <!-- items-start (not items-end): the username field's help text
-                 below its input makes that cell taller than its siblings, so
-                 bottom-aligning would misalign the inputs. -->
-            <div class="grid gap-3 sm:grid-cols-3 sm:items-start">
-              <UFormField label="rating_key">
-                <UInput v-model="testRatingKey" placeholder="25419" class="w-full" />
-              </UFormField>
-              <UFormField label="username" help="must have a seenr token mapped above">
-                <USelectMenu
-                  v-model="testUsername"
-                  :items="mappedUsernames"
-                  create-item
-                  placeholder="Select or type…"
-                  class="w-full"
-                  @create="(item) => { testUsername = item }"
-                />
-              </UFormField>
-              <UFormField label="action">
-                <USelectMenu v-model="testAction" :items="TEST_ACTIONS" class="w-full" />
-              </UFormField>
-            </div>
+      <ItemPicker v-model="testRatingKey" />
 
-            <div class="space-y-2">
-              <p class="text-xs text-muted">
-                <strong class="text-default">Preview</strong> only builds the payload — nothing is
-                sent and nothing is recorded.
-                <strong class="text-default">Send to seenr for real</strong> actually forwards it
-                to this user's seenr account and writes an event row.
-              </p>
-              <div class="flex flex-wrap gap-3">
-                <UButton
-                  color="neutral"
-                  variant="outline"
-                  icon="i-lucide-eye"
-                  label="Preview"
-                  class="min-h-11"
-                  :loading="previewBusy"
-                  :disabled="sendBusy"
-                  @click="runTest(true)"
-                />
-                <!-- error (rose), not warning (amber): this is the destructive
-                     half of the pair, and amber is not in this palette. -->
-                <UButton
-                  color="error"
-                  icon="i-lucide-send"
-                  label="Send to seenr for real"
-                  class="min-h-11"
-                  :loading="sendBusy"
-                  :disabled="previewBusy"
-                  @click="runTest(false)"
-                />
-              </div>
-            </div>
+      <div class="grid gap-3 sm:grid-cols-2 sm:items-end">
+        <UFormField label="User">
+          <USelectMenu
+            v-model="testUsername"
+            :items="mappedUsernames"
+            create-item
+            placeholder="Select or type…"
+            class="w-full"
+            @create="(item) => { testUsername = item }"
+          />
+        </UFormField>
+        <UFormField label="Action">
+          <USelectMenu v-model="testAction" :items="TEST_ACTIONS" class="w-full" />
+        </UFormField>
+      </div>
+      <!-- Out of the grid on purpose: as a `help` on the User field this line
+           made that cell taller than its siblings and the row ragged. -->
+      <p class="text-xs text-dimmed">The user must have a seenr token mapped in step 2.</p>
+
+      <div class="flex flex-col gap-3 border-t border-default pt-4 sm:flex-row sm:items-center">
+        <!-- Preview is the solid primary: it is the safe, common action, and was
+             previously styled as the afterthought. Send drops from solid rose to
+             `subtle` — still unmistakably the destructive half, no longer the
+             loudest pixel on the page. -->
+        <UButton
+          icon="i-lucide-eye"
+          label="Preview"
+          class="min-h-11 justify-center"
+          :loading="previewBusy"
+          :disabled="sendBusy"
+          @click="runTest(true)"
+        />
+        <UButton
+          color="error"
+          variant="subtle"
+          icon="i-lucide-send"
+          label="Send for real"
+          class="min-h-11 justify-center"
+          :loading="sendBusy"
+          :disabled="previewBusy"
+          @click="runTest(false)"
+        />
+        <p class="text-xs text-dimmed sm:ml-auto sm:text-right">
+          Preview builds the payload only.<br class="hidden sm:block" />
+          Send forwards to <strong class="text-default">{{ testUsername || 'the selected user' }}</strong>
+          and records an event.
+        </p>
+      </div>
 
             <div v-if="testResult" class="space-y-3 border-t border-default pt-4">
               <div class="flex flex-wrap items-center gap-2">

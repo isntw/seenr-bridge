@@ -1,7 +1,7 @@
 // Minimal Tautulli API client. Used to look up an item's REAL external IDs by
 // rating_key — the piece the Tautulli webhook template cannot provide for episodes.
 
-import type { TautulliMetadata } from '../../shared/types'
+import type { TautulliMetadata, LibraryItem } from '../../shared/types'
 
 // Tautulli wraps every response in the same envelope; only the `data` shape
 // varies by command, so callers supply that as the type parameter.
@@ -25,6 +25,44 @@ interface TautulliUser {
 
 interface TautulliAddNotifierResult {
   notifier_id?: number
+}
+
+interface TautulliLibraryRaw {
+  section_id: string | number
+  section_name: string
+  section_type: string
+  count: string | number
+}
+
+export interface TautulliLibrary {
+  section_id: string
+  section_name: string
+  section_type: string
+  count: number
+}
+
+// Tautulli's DataTables-style endpoints (get_library_media_info, get_history)
+// nest their rows one level under `data` inside the usual response envelope.
+interface TautulliLibraryMediaRow {
+  rating_key: string | number
+  title: string
+  year?: string | number | null
+  media_type?: string
+  thumb?: string
+}
+
+interface TautulliLibraryMediaInfo {
+  data?: TautulliLibraryMediaRow[]
+}
+
+interface TautulliHistoryRow {
+  media_type?: string
+  watched_status?: number | string
+  rating_key: string | number
+}
+
+interface TautulliHistoryData {
+  data?: TautulliHistoryRow[]
 }
 
 function base(url: string): string {
@@ -126,6 +164,68 @@ export async function fetchImage(
 export async function bridgeWebhookExists(url: string, apiKey: string): Promise<boolean> {
   const notifiers = await tautulliApi<TautulliNotifier[]>(url, apiKey, 'get_notifiers')
   return Array.isArray(notifiers) && notifiers.some((n) => n.friendly_name === BRIDGE_FRIENDLY_NAME && n.agent_name === 'webhook')
+}
+
+// The Plex libraries Tautulli monitors (used to find the show/movie sections).
+export async function getLibraries(url: string, apiKey: string): Promise<TautulliLibrary[]> {
+  const data = await tautulliApi<TautulliLibraryRaw[]>(url, apiKey, 'get_libraries')
+  if (!Array.isArray(data)) return []
+  return data.map((d) => ({
+    section_id: String(d.section_id),
+    section_name: d.section_name,
+    section_type: d.section_type,
+    count: Number(d.count) || 0,
+  }))
+}
+
+// Browse the show/movie library for the "shared titles" picker. Merges every
+// section of the requested type, searches server-side, and paginates in memory.
+export async function getLibraryItems(
+  url: string,
+  apiKey: string,
+  opts: { type: 'show' | 'movie'; search?: string; start?: number; length?: number },
+): Promise<{ items: LibraryItem[]; total: number }> {
+  const sections = (await getLibraries(url, apiKey)).filter((l) => l.section_type === opts.type)
+  const search = (opts.search || '').trim()
+  const all: LibraryItem[] = []
+  for (const sec of sections) {
+    const data = await tautulliApi<TautulliLibraryMediaInfo>(url, apiKey, 'get_library_media_info', {
+      section_id: sec.section_id,
+      order_column: 'title',
+      order_dir: 'asc',
+      start: '0',
+      length: '5000', // personal-scale libraries; search narrows large ones
+      ...(search ? { search } : {}),
+    })
+    const rows = Array.isArray(data?.data) ? data.data : []
+    for (const r of rows) {
+      all.push({
+        rating_key: String(r.rating_key),
+        title: r.title,
+        year: r.year != null ? String(r.year) : '',
+        media_type: r.media_type || opts.type,
+        image: r.thumb || '',
+      })
+    }
+  }
+  all.sort((a, b) => a.title.localeCompare(b.title))
+  const start = opts.start || 0
+  const length = opts.length || 50
+  return { items: all.slice(start, start + length), total: all.length }
+}
+
+// Distinct episode rating_keys that reached "watched" for a given show, across all
+// users — used to retroactively scrobble a newly-shared show to its co-watchers.
+export async function getWatchedEpisodeKeys(url: string, apiKey: string, grandparentRatingKey: string): Promise<string[]> {
+  const data = await tautulliApi<TautulliHistoryData>(url, apiKey, 'get_history', {
+    grandparent_rating_key: grandparentRatingKey,
+    length: '1000',
+  })
+  const rows = Array.isArray(data?.data) ? data.data : []
+  const keys = rows
+    .filter((r) => r.media_type === 'episode' && Number(r.watched_status) === 1)
+    .map((r) => String(r.rating_key))
+  return Array.from(new Set(keys))
 }
 
 // Pull the list of Plex users Tautulli knows about, so the UI can offer them as

@@ -2,7 +2,7 @@ import Database from 'better-sqlite3'
 import path from 'node:path'
 import fs from 'node:fs'
 import crypto from 'node:crypto'
-import type { Settings, Mapping, ScrobbleEvent, Stats } from '../../shared/types'
+import type { Settings, Mapping, ScrobbleEvent, Stats, SharedTitle } from '../../shared/types'
 
 const CACHE_KEY = '__seenrBridgeDb__'
 
@@ -83,6 +83,23 @@ CREATE TABLE IF NOT EXISTS sessions (
   token TEXT PRIMARY KEY,
   user_id INTEGER NOT NULL,
   created INTEGER NOT NULL
+);
+
+-- Shows/movies flagged as co-watched. rating_key is the show's own key (matches an
+-- episode's grandparent_rating_key) or the movie's key. A watch on such a title
+-- fans out to every assigned profile — see shared_title_profiles.
+CREATE TABLE IF NOT EXISTS shared_titles (
+  rating_key TEXT PRIMARY KEY,
+  media_type TEXT NOT NULL,
+  title TEXT,
+  year TEXT,
+  image TEXT,
+  created INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS shared_title_profiles (
+  rating_key TEXT NOT NULL,
+  mapping_id INTEGER NOT NULL,
+  PRIMARY KEY (rating_key, mapping_id)
 );
 `)
 
@@ -248,7 +265,81 @@ export function upsertMapping(
 }
 
 export function deleteMapping(id: number): void {
-  useDb().prepare('DELETE FROM mappings WHERE id = ?').run(id)
+  const db = useDb()
+  db.prepare('DELETE FROM shared_title_profiles WHERE mapping_id = ?').run(id)
+  // drop any shared titles left with no profiles
+  db.prepare(
+    'DELETE FROM shared_titles WHERE rating_key NOT IN (SELECT rating_key FROM shared_title_profiles)',
+  ).run()
+  db.prepare('DELETE FROM mappings WHERE id = ?').run(id)
+}
+
+// ---- shared (co-watched) titles ----
+
+export interface SharedTitleRow {
+  rating_key: string
+  media_type: string
+  title: string | null
+  year: string | null
+  image: string | null
+  created: number
+}
+
+export function sharedTitleToWire(r: SharedTitleRow, profiles: number[]): SharedTitle {
+  return {
+    rating_key: r.rating_key,
+    media_type: r.media_type,
+    title: r.title,
+    year: r.year,
+    image: r.image,
+    profiles,
+  }
+}
+
+export function listSharedTitles(): SharedTitle[] {
+  const rows = useDb().prepare('SELECT * FROM shared_titles ORDER BY title').all() as SharedTitleRow[]
+  const links = useDb()
+    .prepare('SELECT rating_key, mapping_id FROM shared_title_profiles')
+    .all() as { rating_key: string; mapping_id: number }[]
+  const byKey = new Map<string, number[]>()
+  for (const l of links) {
+    const arr = byKey.get(l.rating_key) ?? []
+    arr.push(l.mapping_id)
+    byKey.set(l.rating_key, arr)
+  }
+  return rows.map((r) => sharedTitleToWire(r, byKey.get(r.rating_key) ?? []))
+}
+
+// Set (or clear) the profiles co-watching a title. Empty list removes the share.
+export function setSharedTitle(
+  t: { rating_key: string; media_type: string; title?: string; year?: string; image?: string },
+  profiles: number[],
+): void {
+  const clean = Array.from(new Set(profiles.filter((n) => Number.isInteger(n))))
+  const db = useDb()
+  const tx = db.transaction(() => {
+    if (clean.length === 0) {
+      db.prepare('DELETE FROM shared_title_profiles WHERE rating_key = ?').run(t.rating_key)
+      db.prepare('DELETE FROM shared_titles WHERE rating_key = ?').run(t.rating_key)
+      return
+    }
+    db.prepare(
+      `INSERT INTO shared_titles (rating_key, media_type, title, year, image, created)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(rating_key) DO UPDATE SET media_type=excluded.media_type, title=excluded.title, year=excluded.year, image=excluded.image`,
+    ).run(t.rating_key, t.media_type, t.title ?? null, t.year ?? null, t.image ?? null, Date.now())
+    db.prepare('DELETE FROM shared_title_profiles WHERE rating_key = ?').run(t.rating_key)
+    const ins = db.prepare('INSERT INTO shared_title_profiles (rating_key, mapping_id) VALUES (?, ?)')
+    for (const id of clean) ins.run(t.rating_key, id)
+  })
+  tx()
+}
+
+// Mappings that co-watch a given title key — the fan-out recipients.
+export function getSharedRecipients(rating_key: string): MappingRow[] {
+  return useDb()
+    .prepare('SELECT m.* FROM mappings m JOIN shared_title_profiles s ON s.mapping_id = m.id WHERE s.rating_key = ?')
+    .all(rating_key) as MappingRow[]
 }
 
 const MAX_EVENTS = 1000

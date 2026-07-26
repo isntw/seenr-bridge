@@ -91,6 +91,7 @@ export interface ProcessResult {
   image?: string | null
   seenr_status?: number
   payload?: Record<string, unknown>
+  fanout?: number // how many profiles it was forwarded to (real events only)
 }
 
 export type TestResult = ProcessResult
@@ -101,4 +102,36 @@ export interface SyncResult {
   notifier_id?: number
   created?: boolean
   error?: string
+}
+
+export interface LibraryItem {
+  rating_key: string
+  title: string
+  year: string
+  media_type: string // 'show' | 'movie'
+  image: string
+}
+
+// A title (show or movie) flagged as co-watched, with the mapping ids of its
+// assigned profiles. rating_key is the show's own key for a series (matches
+// an episode's grandparent_rating_key), or the movie's key.
+export interface SharedTitle {
+  rating_key: string
+  media_type: string
+  title: string | null
+  year: string | null
+  image: string | null
+  profiles: number[] // mapping ids
+}
+
+export interface BackfillResult {
+  ok: boolean
+  reason?: string
+  media_type?: string
+  title?: string
+  items: number // movies: 1; shows: number of watched episodes found
+  profiles: number // profiles delivered to
+  delivered: number // total scrobbles sent (items × profiles, minus skips)
+  ok_count: number
+  fail_count: number
 }

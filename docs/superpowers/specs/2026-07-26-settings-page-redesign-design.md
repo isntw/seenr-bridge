@@ -318,9 +318,13 @@ runner.
 ## Mobile specifics
 
 - Field grids collapse to one column; the group-level help line sits under the group in both layouts.
-- Action rows stack **primary-first** — `Save` above `Test connection`, `Preview` above
-  `Send for real`. The bottom-most control is the easiest thumb reach, and today's order puts the
-  secondary action there.
+- Action rows stack **primary-on-top** — `Save` above `Test connection`, `Preview` above
+  `Send for real`. The primary is the action you almost always want, so it is the first control you
+  meet as the row scrolls into view; the secondary drops beneath it.
+  - An earlier draft justified this with "the bottom-most control is the easiest thumb reach", which
+    argued for the opposite order. That reasoning applies to a fixed bottom bar, not to buttons
+    sitting mid-page in a scrolling form, and it contradicted the ordering specified everywhere else
+    in this document. **Primary-on-top governs.**
 - Mapped-user rows stack: username and `Configure` on the first line, token + sync summary beneath.
 - Trigger chips wrap; they are already sized for touch.
 - The `More` divider and its two cards are unchanged in structure across breakpoints.

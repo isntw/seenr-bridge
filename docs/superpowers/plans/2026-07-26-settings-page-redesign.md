@@ -555,8 +555,9 @@ Delete the step-1 block (lines 219–232) and the step-3 block (lines 302–349)
           Settings → Web Interface → API key
         </p>
         <div class="flex flex-col gap-3 border-t border-default pt-4 sm:flex-row sm:justify-end">
-          <!-- Mobile stacks primary-first: the bottom-most control is the easiest
-               thumb reach, so `order` puts Save there below sm. -->
+          <!-- Below sm the row stacks with the primary on top (order-1), so the
+               action you almost always want is the first control you meet as the
+               row scrolls into view; the secondary drops beneath it. -->
           <UButton
             color="neutral"
             variant="subtle"

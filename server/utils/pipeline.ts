@@ -38,8 +38,9 @@ export async function processEvent(
   let meta
   try {
     meta = await getMetadata(settings.tautulli_url, settings.tautulli_apikey, input.rating_key)
-  } catch (e: any) {
-    return fail(`Metadata lookup failed: ${e?.message || e}`)
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    return fail(`Metadata lookup failed: ${msg}`)
   }
 
   const built = buildPayload(meta, input.action, input.username)
@@ -61,8 +62,9 @@ export async function processEvent(
   try {
     const r = await forwardToSeenr(settings.seenr_base_url, mapping.seenr_token, built.payload)
     status = r.status; respBody = r.body
-  } catch (e: any) {
-    return fail(`Forward to seenr failed: ${e?.message || e}`, common)
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    return fail(`Forward to seenr failed: ${msg}`, common)
   }
 
   const ok = status >= 200 && status < 300

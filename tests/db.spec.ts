@@ -78,7 +78,11 @@ describe('events', () => {
 })
 
 describe('wire conversion', () => {
-  it('converts 0/1 columns to booleans and parses ids', async () => {
+  // All three *ToWire helpers need coverage: this boundary is the only thing
+  // stopping a raw 0/1 reaching the client, so an untested helper is an
+  // untested guarantee.
+
+  it('mappingToWire converts 0/1 columns to booleans', async () => {
     const db = await freshDb()
     const m = db.upsertMapping('bob', 'tok', 1, 0, 1)
     const wire = db.mappingToWire(m)
@@ -86,5 +90,48 @@ describe('wire conversion', () => {
     expect(wire.enabled).toBe(true)
     expect(wire.sync_movies).toBe(false)
     expect(wire.sync_episodes).toBe(true)
+  })
+
+  it('settingsToWire converts 0/1 columns to booleans', async () => {
+    const db = await freshDb()
+    db.saveSettings({ forward_enabled: 0, sync_movies: 1, sync_episodes: 0 })
+    const wire = db.settingsToWire(db.getSettings())
+
+    expect(wire.forward_enabled).toBe(false)
+    expect(wire.sync_movies).toBe(true)
+    expect(wire.sync_episodes).toBe(false)
+  })
+
+  it('eventToWire converts ok to boolean and parses the ids JSON', async () => {
+    const db = await freshDb()
+    const id = db.insertEvent({
+      ts: 1_700_000_000_000, action: 'watched', event: 'media.scrobble',
+      username: 'alice', media_type: 'episode', title: 't', rating_key: '1',
+      ids: JSON.stringify(['tmdb://62161', 'imdb://tt2301455']),
+      image: null, series_key: null, seenr_status: 200, ok: 1,
+      error: null, payload: null,
+    })
+    const row = db.listEvents(10).find((r) => r.id === id)!
+    const wire = db.eventToWire(row)
+
+    expect(wire.ok).toBe(true)
+    expect(wire.ids).toEqual(['tmdb://62161', 'imdb://tt2301455'])
+  })
+
+  it('eventToWire falls back to an empty ids array on malformed JSON', async () => {
+    const db = await freshDb()
+    const id = db.insertEvent({
+      ts: 1_700_000_000_000, action: 'watched', event: 'media.scrobble',
+      username: 'alice', media_type: 'movie', title: 't', rating_key: '1',
+      ids: '{not valid json',
+      image: null, series_key: null, seenr_status: 500, ok: 0,
+      error: 'boom', payload: null,
+    })
+    const row = db.listEvents(10).find((r) => r.id === id)!
+    const wire = db.eventToWire(row)
+
+    // A corrupt ids column must not crash the events endpoint.
+    expect(wire.ids).toEqual([])
+    expect(wire.ok).toBe(false)
   })
 })

@@ -240,7 +240,8 @@ Expected: PASS, 6 tests.
 - [ ] **Step 6: Run the full suite and typecheck**
 
 Run: `npm test`
-Expected: PASS — 44 tests across 5 files (38 existing + 6 new).
+Expected: PASS — 55 tests across 5 files (49 existing + 6 new). The baseline was measured at
+`2e775fb`: 49 tests across 4 files. (`CLAUDE.md` claims 38 — it is stale; trust the measured number.)
 
 Run: `npm run typecheck`
 Expected: clean. Specifically confirm there is **no** `WARN Duplicated imports` mentioning `getChildren` — that would mean the name collides with an h3/Nitro auto-import and needs renaming.
@@ -1212,7 +1213,7 @@ No new behaviour. This task exists because two of this repo's failure modes are 
 - [ ] **Step 1: Full test suite and typecheck**
 
 Run: `npm test`
-Expected: PASS, 44 tests across 5 files.
+Expected: PASS, 55 tests across 5 files.
 
 Run: `npm run typecheck`
 Expected: clean, and **no `WARN Duplicated imports`**.

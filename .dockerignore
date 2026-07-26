@@ -1,7 +1,7 @@
-**/node_modules
-**/dist
+node_modules
+.nuxt
+.output
 data
-*.log
+legacy
 .git
-.gitignore
-README.md
+docs

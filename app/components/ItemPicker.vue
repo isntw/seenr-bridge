@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { LibraryItem, LibraryChild } from '../../shared/types'
+import { apiErrorMessage } from '../../shared/errors'
 
 // v-model is the resolved rating_key. For TV that is the EPISODE's own key —
 // getLibraryItems returns a SHOW's key, which is precisely the wrong thing to
@@ -10,6 +11,9 @@ const model = defineModel<string>({ default: '' })
 type Mode = 'tv' | 'movie' | 'key'
 type Option = { label: string; value: string }
 
+// The endpoint clamps `length` to 200.
+const LIBRARY_LIMIT = 200
+
 const mode = ref<Mode>('tv')
 const MODES: { value: Mode; label: string }[] = [
   { value: 'tv', label: 'TV' },
@@ -19,6 +23,8 @@ const MODES: { value: Mode; label: string }[] = [
 
 const shows = ref<LibraryItem[]>([])
 const movies = ref<LibraryItem[]>([])
+const showsTotal = ref(0)
+const moviesTotal = ref(0)
 const seasons = ref<LibraryChild[]>([])
 const episodes = ref<LibraryChild[]>([])
 
@@ -43,46 +49,96 @@ const episodeOptions = computed<Option[]>(() =>
   episodes.value.map((e) => ({ label: e.index ? `${e.index} · ${e.title}` : e.title, value: e.rating_key })),
 )
 
-async function library(type: 'show' | 'movie'): Promise<LibraryItem[]> {
-  const r = await $fetch<{ ok: boolean; items: LibraryItem[]; error?: string }>('/api/tautulli/library', {
-    query: { type, length: 200 },
-  })
-  if (!r.ok) throw new Error(r.error || 'Tautulli library unavailable')
-  return r.items
+// A library bigger than LIBRARY_LIMIT is sliced alphabetically server-side, so a
+// title can simply be absent from the dropdown. Say so rather than letting the
+// user conclude it isn't in Plex.
+const shown = computed(() => (mode.value === 'tv' ? shows.value.length : movies.value.length))
+const total = computed(() => (mode.value === 'tv' ? showsTotal.value : moviesTotal.value))
+const truncated = computed(() => mode.value !== 'key' && total.value > shown.value)
+const emptyLibrary = computed(
+  () => mode.value !== 'key' && !busy.value && !failed.value && shown.value === 0,
+)
+
+async function library(type: 'show' | 'movie'): Promise<{ items: LibraryItem[]; total: number }> {
+  const r = await $fetch<{ ok: boolean; items: LibraryItem[]; total: number; error?: string }>(
+    '/api/tautulli/library',
+    { query: { type, length: LIBRARY_LIMIT } },
+  )
+  if (!r.ok) throw new Error(r.error || NOT_CONFIGURED)
+  return { items: r.items, total: r.total ?? r.items.length }
 }
 
 async function children(ratingKey: string): Promise<LibraryChild[]> {
   const r = await $fetch<{ ok: boolean; items: LibraryChild[]; error?: string }>('/api/tautulli/children', {
     query: { rating_key: ratingKey },
   })
-  if (!r.ok) throw new Error(r.error || 'Tautulli lookup failed')
+  if (!r.ok) throw new Error(r.error || NOT_CONFIGURED)
   return r.items
 }
 
-// A picker failure must never block the panel — fall back to Paste key so the
-// raw rating_key field can still do the job.
-async function guard(fn: () => Promise<void>) {
+// Both endpoints return ok:false with NO error string when Tautulli simply isn't
+// configured, and WITH one when it is configured but unreachable. That lets the
+// two cases read differently instead of both saying "unavailable".
+const NOT_CONFIGURED = 'Tautulli isn’t configured yet — add its URL and API key in step 1.'
+
+// `scope` decides how a failure degrades. A failed *library* fetch means the
+// picker has nothing to offer, so it falls back to Paste key. A failed
+// *season/episode* lookup must NOT do that: it would unmount a perfectly good
+// Show select and strand the user with no way to repopulate it.
+//
+// `failed` is cleared when an operation STARTS and never on success — otherwise
+// an overlapping success erases the message explaining a failure it didn't cause.
+async function guard(fn: () => Promise<void>, scope: 'library' | 'deep') {
   busy.value = true
+  failed.value = ''
   try {
     await fn()
-    failed.value = ''
   } catch (e) {
-    failed.value = e instanceof Error ? e.message : String(e)
-    mode.value = 'key'
+    failed.value = apiErrorMessage(e, 'Tautulli lookup failed.')
+    if (scope === 'library') mode.value = 'key'
   } finally {
     busy.value = false
   }
 }
 
-function pick(m: Mode) {
-  mode.value = m
-  model.value = ''
-  if (m === 'tv' && !shows.value.length) guard(async () => { shows.value = await library('show') })
-  if (m === 'movie' && !movies.value.length) guard(async () => { movies.value = await library('movie') })
+function loadShows() {
+  guard(async () => {
+    const page = await library('show')
+    shows.value = page.items
+    showsTotal.value = page.total
+  }, 'library')
 }
 
-onMounted(() => guard(async () => { shows.value = await library('show') }))
+function loadMovies() {
+  guard(async () => {
+    const page = await library('movie')
+    movies.value = page.items
+    moviesTotal.value = page.total
+  }, 'library')
+}
 
+// Re-derive the key from whatever is already selected in the target mode instead
+// of blanking it. Clicking the active segment — or round-tripping TV → Movies →
+// TV — used to leave a fully populated set of selects resolving to nothing, and
+// re-picking the same option could not recover it: reka-ui assigns an identical
+// object reference, so the watcher never fires.
+function pick(m: Mode) {
+  if (m === mode.value) return
+  mode.value = m
+  failed.value = ''
+  if (m === 'tv') model.value = episode.value?.value ?? ''
+  else if (m === 'movie') model.value = movie.value?.value ?? ''
+  else model.value = ''
+  if (m === 'tv' && !shows.value.length) loadShows()
+  if (m === 'movie' && !movies.value.length) loadMovies()
+}
+
+onMounted(loadShows)
+
+// Each chained fetch re-asserts its own selection after awaiting. Without that,
+// picking show A then show B while A is still in flight can land A's seasons
+// under B's name, and the user submits an episode of the wrong show — the exact
+// wrong-title check-in this whole app exists to prevent.
 watch(show, (s) => {
   season.value = undefined
   episode.value = undefined
@@ -90,8 +146,10 @@ watch(show, (s) => {
   episodes.value = []
   model.value = ''
   if (s) guard(async () => {
-    seasons.value = (await children(s.value)).filter((c) => c.media_type === 'season')
-  })
+    const rows = await children(s.value)
+    if (show.value !== s) return
+    seasons.value = rows.filter((c) => c.media_type === 'season')
+  }, 'deep')
 })
 
 watch(season, (s) => {
@@ -99,24 +157,28 @@ watch(season, (s) => {
   episodes.value = []
   model.value = ''
   if (s) guard(async () => {
-    episodes.value = (await children(s.value)).filter((c) => c.media_type === 'episode')
-  })
+    const rows = await children(s.value)
+    if (season.value !== s) return
+    episodes.value = rows.filter((c) => c.media_type === 'episode')
+  }, 'deep')
 })
 
-watch(episode, (e) => { if (e) model.value = e.value })
-watch(movie, (m) => { if (m) model.value = m.value })
+// Clear the key when a selection is cleared, rather than leaving a stale one.
+watch(episode, (e) => { model.value = e ? e.value : '' })
+watch(movie, (m) => { model.value = m ? m.value : '' })
 </script>
 
 <template>
   <div class="space-y-3">
     <!-- UFieldGroup, NOT UButtonGroup — the latter was renamed in Nuxt UI v4 and
          the old name silently renders nothing. -->
-    <UFieldGroup>
+    <UFieldGroup aria-label="Item source">
       <UButton
         v-for="m in MODES"
         :key="m.value"
         :color="mode === m.value ? 'primary' : 'neutral'"
         :variant="mode === m.value ? 'subtle' : 'outline'"
+        :aria-pressed="mode === m.value"
         :label="m.label"
         class="min-h-11"
         @click="pick(m.value)"
@@ -161,10 +223,19 @@ watch(movie, (m) => { if (m) model.value = m.value })
       </UFormField>
     </div>
 
-    <p v-if="failed" class="text-xs text-warning">
-      Couldn't reach the Tautulli library ({{ failed }}) — paste a rating_key instead.
+    <p v-if="failed" class="text-xs text-warning" role="status">
+      {{ failed }} — paste a rating_key instead.
     </p>
-    <p v-else-if="model" class="text-xs text-dimmed">
+    <p v-else-if="emptyLibrary" class="text-xs text-warning" role="status">
+      Tautulli reports no {{ mode === 'tv' ? 'TV' : 'movie' }} libraries. Try the other tab, or paste
+      a rating_key.
+    </p>
+    <p v-else-if="truncated" class="text-xs text-warning" role="status">
+      Showing the first {{ shown }} of {{ total }} titles alphabetically — if yours isn't listed,
+      paste its rating_key.
+    </p>
+
+    <p v-if="model" class="text-xs text-dimmed">
       Resolves to <code class="text-primary-300">rating_key {{ model }}</code>
     </p>
   </div>

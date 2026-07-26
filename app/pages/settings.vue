@@ -499,44 +499,44 @@ async function runTest(dryRun: boolean) {
         </p>
       </div>
 
-            <div v-if="testResult" class="space-y-3 border-t border-default pt-4">
-              <div class="flex flex-wrap items-center gap-2">
-                <UBadge
-                  :color="testResult.ok ? 'success' : testResult.skipped ? 'warning' : 'error'"
-                  variant="subtle"
-                  :label="testResult.ok ? 'ok' : testResult.skipped ? 'skipped' : 'failed'"
-                />
-                <UBadge
-                  v-if="testResult.media_type"
-                  color="neutral"
-                  variant="subtle"
-                  :label="testResult.media_type"
-                />
-                <UBadge
-                  v-if="testResult.seenr_status"
-                  color="neutral"
-                  variant="subtle"
-                  :label="`seenr ${testResult.seenr_status}`"
-                />
-              </div>
+      <div v-if="testResult" class="space-y-3 border-t border-default pt-4">
+        <div class="flex flex-wrap items-center gap-2">
+          <UBadge
+            :color="testResult.ok ? 'success' : testResult.skipped ? 'warning' : 'error'"
+            variant="subtle"
+            :label="testResult.ok ? 'ok' : testResult.skipped ? 'skipped' : 'failed'"
+          />
+          <UBadge
+            v-if="testResult.media_type"
+            color="neutral"
+            variant="subtle"
+            :label="testResult.media_type"
+          />
+          <UBadge
+            v-if="testResult.seenr_status"
+            color="neutral"
+            variant="subtle"
+            :label="`seenr ${testResult.seenr_status}`"
+          />
+        </div>
 
-              <div v-if="testResult.title" class="text-sm font-medium">{{ testResult.title }}</div>
-              <div v-if="testResult.ids?.length" class="text-xs text-dimmed">
-                ids: {{ testResult.ids.join(', ') }}
-              </div>
+        <div v-if="testResult.title" class="text-sm font-medium">{{ testResult.title }}</div>
+        <div v-if="testResult.ids?.length" class="text-xs text-dimmed">
+          ids: {{ testResult.ids.join(', ') }}
+        </div>
 
-              <UAlert
-                v-if="testResult.reason"
-                :color="testResult.ok ? 'neutral' : testResult.skipped ? 'warning' : 'error'"
-                variant="subtle"
-                :description="testResult.reason"
-              />
+        <UAlert
+          v-if="testResult.reason"
+          :color="testResult.ok ? 'neutral' : testResult.skipped ? 'warning' : 'error'"
+          variant="subtle"
+          :description="testResult.reason"
+        />
 
-              <pre
-                v-if="testResult.payload"
-                class="max-h-64 overflow-auto rounded-lg bg-default p-3 text-xs ring-1 ring-default"
-              >{{ testResultPayload }}</pre>
-            </div>
+        <pre
+          v-if="testResult.payload"
+          class="max-h-64 overflow-auto rounded-lg bg-default p-3 text-xs ring-1 ring-default"
+        >{{ testResultPayload }}</pre>
+      </div>
     </DisclosureCard>
 
     <UModal

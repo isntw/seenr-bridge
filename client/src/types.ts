@@ -64,6 +64,35 @@ export interface Stats {
   users: number;
 }
 
+export interface LibraryItem {
+  rating_key: string;
+  title: string;
+  year: string;
+  media_type: string; // 'show' | 'movie'
+  image: string;
+}
+
+export interface SharedTitle {
+  rating_key: string;
+  media_type: string;
+  title: string | null;
+  year: string | null;
+  image: string | null;
+  profiles: number[]; // mapping ids
+}
+
+export interface BackfillResult {
+  ok: boolean;
+  reason?: string;
+  media_type?: string;
+  title?: string;
+  items: number;
+  profiles: number;
+  delivered: number;
+  ok_count: number;
+  fail_count: number;
+}
+
 export interface TestResult {
   ok: boolean;
   skipped?: boolean;

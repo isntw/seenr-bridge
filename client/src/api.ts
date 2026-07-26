@@ -1,4 +1,4 @@
-import type { Settings, Mapping, EventRow, Stats, TestResult, SyncResult, Status, AuthStatus } from './types';
+import type { Settings, Mapping, EventRow, Stats, TestResult, SyncResult, Status, AuthStatus, LibraryItem, SharedTitle, BackfillResult } from './types';
 
 async function req<T>(url: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(url, {
@@ -27,6 +27,16 @@ export const api = {
     req<{ ok: boolean; message: string }>('/api/settings/test-tautulli', { method: 'POST', body: JSON.stringify(s || {}) }),
 
   getTautulliUsers: () => req<{ ok: boolean; users: string[]; error?: string }>('/api/tautulli/users'),
+
+  getLibrary: (type: 'show' | 'movie', search = '', start = 0, length = 50) =>
+    req<{ ok: boolean; items: LibraryItem[]; total: number; error?: string }>(
+      `/api/tautulli/library?type=${type}&start=${start}&length=${length}&search=${encodeURIComponent(search)}`
+    ),
+  getShared: () => req<SharedTitle[]>('/api/shared'),
+  setShared: (t: { rating_key: string; media_type: string; title?: string; year?: string; image?: string; profiles: number[] }) =>
+    req<{ ok: boolean; profiles: number[] }>('/api/shared', { method: 'PUT', body: JSON.stringify(t) }),
+  backfillShared: (rating_key: string) =>
+    req<BackfillResult>(`/api/shared/${encodeURIComponent(rating_key)}/backfill`, { method: 'POST' }),
 
   getMappings: () => req<Mapping[]>('/api/mappings'),
   saveMapping: (m: { username: string; seenr_token: string; enabled: boolean; sync_movies?: boolean; sync_episodes?: boolean }) =>

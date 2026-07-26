@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import {
   getSettings, saveSettings, listMappings, upsertMapping, deleteMapping,
-  listEvents, getStats,
+  listEvents, getStats, listSharedTitles, setSharedTitle,
 } from './db';
-import { testConnection, syncSeenrWebhook, fetchImage, bridgeWebhookExists, getUsers } from './tautulli';
-import { processEvent } from './pipeline';
+import { testConnection, syncSeenrWebhook, fetchImage, bridgeWebhookExists, getUsers, getLibraryItems } from './tautulli';
+import { processEvent, backfillSharedTitle } from './pipeline';
 import { requireAuth } from './auth';
 import { VERSION } from './version';
 
@@ -124,6 +124,45 @@ api.post('/mappings', (req, res) => {
 api.delete('/mappings/:id', (req, res) => {
   deleteMapping(Number(req.params.id));
   res.json({ ok: true });
+});
+
+// ---- library browse + shared (co-watched) titles ----
+api.get('/tautulli/library', async (req, res) => {
+  const s = getSettings();
+  if (!s.tautulli_url || !s.tautulli_apikey) return res.json({ ok: false, items: [], total: 0 });
+  const type = req.query.type === 'movie' ? 'movie' : 'show';
+  try {
+    const r = await getLibraryItems(s.tautulli_url, s.tautulli_apikey, {
+      type,
+      search: typeof req.query.search === 'string' ? req.query.search : '',
+      start: Number(req.query.start) || 0,
+      length: Math.min(Number(req.query.length) || 50, 200),
+    });
+    res.json({ ok: true, ...r });
+  } catch (e: any) {
+    res.json({ ok: false, items: [], total: 0, error: e?.message || String(e) });
+  }
+});
+
+api.get('/shared', (_req, res) => res.json(listSharedTitles()));
+
+api.put('/shared', (req, res) => {
+  const b = req.body || {};
+  if (!b.rating_key || !b.media_type) return res.status(400).json({ error: 'rating_key and media_type required' });
+  const profiles = Array.isArray(b.profiles) ? b.profiles.map((n: any) => Number(n)).filter((n: number) => Number.isInteger(n)) : [];
+  setSharedTitle(
+    { rating_key: String(b.rating_key), media_type: String(b.media_type), title: b.title, year: b.year, image: b.image },
+    profiles
+  );
+  res.json({ ok: true, profiles });
+});
+
+api.post('/shared/:rating_key/backfill', async (req, res) => {
+  try {
+    res.json(await backfillSharedTitle(String(req.params.rating_key)));
+  } catch (e: any) {
+    res.status(500).json({ ok: false, reason: e?.message || String(e) });
+  }
 });
 
 // ---- events / stats ----

@@ -2,7 +2,7 @@
 
 A small self-hosted service that makes **Tautulli → [seenr](https://seenr.app)** scrobbling work correctly for **TV episodes and movies**, for **every Plex user** — with a web UI to set it up and watch it work.
 
-![version](https://img.shields.io/badge/version-1.0.1-8b5cf6)
+![version](https://img.shields.io/badge/version-1.1.0-8b5cf6)
 
 ![Seenr Bridge dashboard](docs/dashboard.png)
 

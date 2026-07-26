@@ -17,6 +17,17 @@ export default defineNuxtConfig({
 
   colorMode: { preference: 'dark' },
 
+  // @nuxt/icon's client bundle ships only @nuxt/ui's own internal icons — the app's
+  // own `i-lucide-*` names are not in it, and are otherwise fetched at runtime from
+  // /api/_nuxt_icon/<collection> on every cold load. `scan: true` inlines the icons
+  // referenced in source instead, so they paint with no round-trip and without
+  // depending on that endpoint being reachable (requiresAuth() exempts it
+  // explicitly for exactly this reason — see ICON_PATH_PREFIX in server/utils/auth.ts).
+  // Icon names built dynamically can't be scanned: list those in clientBundle.icons.
+  icon: {
+    clientBundle: { scan: true },
+  },
+
   nitro: {
     preset: 'node-server',
 
@@ -31,5 +42,14 @@ export default defineNuxtConfig({
     externals: { external: ['better-sqlite3'] },
   },
 
-  typescript: { strict: true },
+  typescript: {
+    strict: true,
+
+    // Without this, a component name that doesn't exist (e.g. UButtonGroup, which
+    // Nuxt UI v4 renamed to UFieldGroup) passes `npm run typecheck`, passes
+    // `nuxt build`, and then renders NOTHING at runtime — prerendering an
+    // ssr:false shell never mounts a component, so nothing warns either. This is
+    // the only static check that catches it.
+    tsConfig: { vueCompilerOptions: { checkUnknownComponents: true } },
+  },
 })

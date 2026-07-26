@@ -1,4 +1,4 @@
 {
   "extends": "./.nuxt/tsconfig.json",
-  "exclude": ["legacy", "node_modules", ".output"]
+  "exclude": ["node_modules", ".output"]
 }

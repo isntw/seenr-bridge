@@ -2,7 +2,7 @@
 
 A small self-hosted service that makes **Tautulli → [seenr](https://seenr.app)** scrobbling work correctly for **TV episodes and movies**, for **every Plex user** — with a web UI to set it up and watch it work.
 
-![version](https://img.shields.io/badge/version-1.0.1-8b5cf6)
+![version](https://img.shields.io/badge/version-2.0.0-8b5cf6)
 
 ![Seenr Bridge dashboard](docs/dashboard.png)
 
@@ -124,7 +124,7 @@ All state (settings, users, mappings, event history) lives in **`./data/seenr-br
 |---|---|:---:|---|
 | POST | `/api/webhook/tautulli` | public | Tautulli posts playback events here |
 | GET | `/api/health`, `/api/version` | public | health + version |
-| POST | `/api/auth/register`, `/login`, `/logout`, `/change-password` | mixed | authentication |
+| POST | `/api/auth/register`, `/login`, `/logout`, `/change-password` | mixed | authentication — `/change-password` requires a session |
 | GET/PUT | `/api/settings` | ✓ | connection + advanced config |
 | GET | `/api/status` | ✓ | readiness (Tautulli, webhook, users) |
 | GET/POST/DELETE | `/api/mappings` | ✓ | per-user token + sync config |
@@ -136,25 +136,30 @@ All state (settings, users, mappings, event history) lives in **`./data/seenr-br
 
 ## Development
 
-Runs both halves with hot-reload, no image rebuilds:
+One install, one process, one port — the API and UI are served from the same origin in dev and production alike:
+
+```bash
+npm install
+npm run dev        # http://localhost:8687
+```
+
+Or in Docker:
 
 ```bash
 docker compose -f docker-compose.dev.yml up -d
-# UI (Vite HMR):  http://<host>:5173
-# API (tsx watch): http://<host>:8687
 ```
 
-Or without Docker:
+Tests and typecheck:
 
 ```bash
-cd server && npm install && npm run dev   # :8687
-cd client && npm install && npm run dev   # :5173 (proxies /api)
+npm test
+npm run typecheck
 ```
 
 ## Versioning
 
-The version is defined once in `server/src/version.ts`, served at `/api/version`, and shown in the sidebar + login screen. Bump it there on release.
+The version is defined once in `shared/version.ts`, served at `/api/version`, and shown in the sidebar + login screen. Bump it there on release.
 
 ## Stack
 
-React + Vite + TypeScript (client) · Express + better-sqlite3 + TypeScript (server) · Docker.
+Nuxt 4 + Vue 3 + Nuxt UI + Pinia (client) · Nitro + better-sqlite3 + TypeScript (server) · Docker.

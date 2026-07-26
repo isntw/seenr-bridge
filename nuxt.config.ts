@@ -18,8 +18,4 @@ export default defineNuxtConfig({
   },
 
   typescript: { strict: true },
-
-  // legacy/ holds the pre-conversion React/Express source during the port.
-  // Task 16 deletes it. Until then, keep it out of the build and typecheck.
-  ignore: ['legacy/**'],
 })

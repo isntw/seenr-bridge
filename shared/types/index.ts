@@ -112,6 +112,18 @@ export interface LibraryItem {
   image: string
 }
 
+// One level below a title: a show's seasons, or a season's episodes. `index` is
+// the season or episode number. Unlike LibraryItem there is no `year` — it is
+// meaningless for an episode, and rating_key here is the child's OWN key, which
+// is the whole point of drilling down.
+export interface LibraryChild {
+  rating_key: string
+  title: string
+  index: string
+  media_type: string // 'season' | 'episode'
+  image: string
+}
+
 // A title (show or movie) flagged as co-watched, with the mapping ids of its
 // assigned profiles. rating_key is the show's own key for a series (matches
 // an episode's grandparent_rating_key), or the movie's key.

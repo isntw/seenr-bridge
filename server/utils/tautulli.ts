@@ -1,7 +1,7 @@
 // Minimal Tautulli API client. Used to look up an item's REAL external IDs by
 // rating_key — the piece the Tautulli webhook template cannot provide for episodes.
 
-import type { TautulliMetadata, LibraryItem } from '../../shared/types'
+import type { TautulliMetadata, LibraryItem, LibraryChild } from '../../shared/types'
 
 // Tautulli wraps every response in the same envelope; only the `data` shape
 // varies by command, so callers supply that as the type parameter.
@@ -63,6 +63,21 @@ interface TautulliHistoryRow {
 
 interface TautulliHistoryData {
   data?: TautulliHistoryRow[]
+}
+
+// get_children_metadata returns a show's seasons or a season's episodes through
+// the same command — the level is decided purely by the rating_key passed in.
+interface TautulliChildRow {
+  rating_key: string | number
+  title?: string
+  media_index?: string | number | null
+  media_type?: string
+  thumb?: string
+}
+
+interface TautulliChildrenData {
+  children_count?: string | number
+  children_list?: TautulliChildRow[]
 }
 
 function base(url: string): string {
@@ -252,4 +267,24 @@ export async function testConnection(url: string, apiKey: string): Promise<{ ok:
     const msg = e instanceof Error ? e.message : String(e)
     return { ok: false, message: msg }
   }
+}
+
+// One level below a title. Called twice by the test-scrobble picker: show →
+// seasons, then season → episodes. The episode's own rating_key is what the
+// caller needs — a show's key is exactly the wrong thing to scrobble, which is
+// the Tautulli defect this whole bridge exists to work around.
+export async function getChildren(url: string, apiKey: string, ratingKey: string): Promise<LibraryChild[]> {
+  const data = await tautulliApi<TautulliChildrenData>(url, apiKey, 'get_children_metadata', {
+    rating_key: ratingKey,
+  })
+  const rows = Array.isArray(data?.children_list) ? data.children_list : []
+  return rows
+    .filter((r) => r.rating_key != null && String(r.rating_key) !== '')
+    .map((r) => ({
+      rating_key: String(r.rating_key),
+      title: r.title || '',
+      index: r.media_index != null ? String(r.media_index) : '',
+      media_type: r.media_type || '',
+      image: r.thumb || '',
+    }))
 }

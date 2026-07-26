@@ -245,8 +245,9 @@ async function runTest(dryRun: boolean) {
           Settings → Web Interface → API key
         </p>
         <div class="flex flex-col gap-3 border-t border-default pt-4 sm:flex-row sm:justify-end">
-          <!-- Mobile stacks primary-first: the bottom-most control is the easiest
-               thumb reach, so `order` puts Save there below sm. -->
+          <!-- Below sm the row stacks with the primary on top (order-1), so the
+               action you almost always want is the first control you meet as the
+               row scrolls into view; the secondary drops beneath it. -->
           <UButton
             color="neutral"
             variant="subtle"
@@ -268,7 +269,7 @@ async function runTest(dryRun: boolean) {
           One webhook in Tautulli covers every user. <strong class="text-default">Watched</strong> is
           the recommended trigger.
         </p>
-        <div class="flex flex-wrap gap-2">
+        <div class="flex flex-wrap gap-2" role="group" aria-label="Triggers to enable">
           <!-- Chips, not checkboxes: the `recommended` badge used to be passed as
                #description to the Watched checkbox, which made that one row
                taller than its four siblings. The badge now folds into the
@@ -278,7 +279,7 @@ async function runTest(dryRun: boolean) {
             :key="t.key"
             type="button"
             :aria-pressed="isTriggerSelected(t.key)"
-            class="min-h-11 rounded-lg px-3.5 text-sm ring-1 transition-colors"
+            class="min-h-11 rounded-lg px-3.5 text-sm ring-1 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-400"
             :class="isTriggerSelected(t.key)
               ? 'bg-primary-600/20 text-primary-200 ring-primary-400/40'
               : 'bg-default text-muted ring-default hover:text-default'"

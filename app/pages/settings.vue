@@ -167,11 +167,24 @@ async function runSync() {
 
 async function saveAdvanced() {
   await store.save({
-    forward_enabled: store.settings!.forward_enabled,
     seenr_base_url: store.settings!.seenr_base_url,
     bridge_url: store.settings!.bridge_url,
   })
   toast.add({ title: 'Saved.', color: 'success' })
+}
+
+// The switch left Advanced, so it no longer has a Save button next to it and
+// must persist on change. On failure the optimistic UI value is rolled back so
+// the switch never lies about what the server holds.
+async function toggleForwarding(v: boolean) {
+  store.settings!.forward_enabled = v
+  try {
+    await store.save({ forward_enabled: v })
+    toast.add({ title: v ? 'Forwarding enabled.' : 'Forwarding paused.', color: 'success' })
+  } catch (e) {
+    store.settings!.forward_enabled = !v
+    toast.add({ title: apiErrorMessage(e, 'Could not change forwarding.'), color: 'error' })
+  }
 }
 
 // Preview and Send share this — the only difference is dryRun (build the
@@ -205,11 +218,11 @@ async function runTest(dryRun: boolean) {
 
 <template>
   <div v-if="store.settings" class="space-y-6">
-    <!-- "Setup" on the left, the live status line on the right — the old page
-         header. Both wrap rather than overflowing on narrow screens. -->
-    <div class="flex flex-wrap items-center justify-between gap-3">
+    <!-- "Setup" on the left; the master forwarding switch and the live status
+         line on the right. Everything wraps rather than overflowing. -->
+    <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
       <h2 class="text-lg font-semibold text-highlighted">Setup</h2>
-      <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
         <span class="flex items-center gap-1.5">
           <span
             class="size-1.5 rounded-full"
@@ -224,6 +237,15 @@ async function runTest(dryRun: boolean) {
           <span class="size-1.5 rounded-full" :class="status.webhook ? 'bg-success' : 'bg-error'" />
           <span class="text-muted">{{ status.webhook ? 'webhook active' : 'no webhook' }}</span>
         </span>
+        <!-- The master kill switch, promoted out of Advanced. min-h-11 on the
+             label keeps the whole hit area at the touch floor. -->
+        <label class="flex min-h-11 items-center gap-2">
+          <USwitch
+            :model-value="store.settings.forward_enabled"
+            @update:model-value="(v) => toggleForwarding(v === true)"
+          />
+          <span class="font-medium text-default">Forwarding</span>
+        </label>
       </div>
     </div>
 
@@ -395,14 +417,7 @@ async function runTest(dryRun: boolean) {
       <hr class="flex-1 border-muted" />
     </div>
 
-    <DisclosureCard v-model:open="advanced" title="Advanced" summary="forwarding · seenr URL · bridge URL">
-      <div class="flex items-center justify-between gap-3">
-        <div class="min-w-0">
-          <div class="text-sm font-medium">Forward to seenr</div>
-          <p class="text-xs text-muted">Master switch for all forwarding.</p>
-        </div>
-        <USwitch v-model="store.settings.forward_enabled" />
-      </div>
+    <DisclosureCard v-model:open="advanced" title="Advanced" summary="seenr URL · bridge URL">
       <UFormField label="seenr base URL" help="each user's token is appended to this">
         <UInput v-model="store.settings.seenr_base_url" class="w-full" />
       </UFormField>

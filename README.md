@@ -103,6 +103,8 @@ Under **Settings → Advanced**:
 
 Account settings (change password, log out) live in the **account menu**, top-right.
 
+Below Advanced, **"Test a scrobble"** runs a `rating_key` through the pipeline on demand — **Preview** builds the payload without contacting seenr, **Send to seenr for real** forwards it to that user's seenr account and writes an event row, same as a real webhook would.
+
 ## How matching works
 
 - **Episodes** → the payload carries the **episode's own** `tmdb`/`tvdb`/`imdb` ids (looked up via the Tautulli API) plus show title and season/episode. seenr matches by id.

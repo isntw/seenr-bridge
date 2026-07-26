@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Mapping } from '../../shared/types'
+import type { Mapping, TestResult } from '../../shared/types'
 import { apiErrorMessage } from '../../shared/errors'
 
 const store = useSettingsStore()
@@ -45,6 +45,21 @@ const newToken = ref('')
 const edit = ref<Mapping | null>(null)
 const advanced = ref(false)
 const manual = ref(false)
+const testPanel = ref(false)
+
+const TEST_ACTIONS = ['watched', 'play', 'stop', 'pause', 'resume']
+const testRatingKey = ref('')
+const testUsername = ref('')
+const testAction = ref('watched')
+const previewBusy = ref(false)
+const sendBusy = ref(false)
+const testResult = ref<TestResult | null>(null)
+
+const mappedUsernames = computed(() => store.mappings.map((m) => m.username))
+
+const testResultPayload = computed(() =>
+  testResult.value?.payload ? JSON.stringify(testResult.value.payload, null, 2) : '',
+)
 
 const webhookUrl = computed(() => {
   const base = (store.settings?.bridge_url || window.location.origin).replace(/\/+$/, '')
@@ -146,6 +161,34 @@ async function saveAdvanced() {
     bridge_url: store.settings!.bridge_url,
   })
   toast.add({ title: 'Saved.', color: 'success' })
+}
+
+// Preview and Send share this — the only difference is dryRun (build the
+// payload without forwarding, vs. actually posting to seenr and recording an
+// event row). Both hit the authed /api/test endpoint directly since the
+// result is page-local scratch state, not shared app state like settings.
+async function runTest(dryRun: boolean) {
+  if (!testRatingKey.value.trim() || !testUsername.value.trim()) {
+    toast.add({ title: 'rating_key and username are both required.', color: 'error' })
+    return
+  }
+  const busy = dryRun ? previewBusy : sendBusy
+  busy.value = true
+  try {
+    testResult.value = await $fetch<TestResult>('/api/test', {
+      method: 'POST',
+      body: {
+        rating_key: testRatingKey.value.trim(),
+        username: testUsername.value.trim(),
+        action: testAction.value,
+        dryRun,
+      },
+    })
+  } catch (e) {
+    toast.add({ title: apiErrorMessage(e, 'Test failed.'), color: 'error' })
+  } finally {
+    busy.value = false
+  }
 }
 </script>
 
@@ -310,6 +353,114 @@ async function saveAdvanced() {
               <UInput v-model="store.settings.bridge_url" placeholder="https://bridge.example.com" class="w-full" />
             </UFormField>
             <UButton label="Save" class="min-h-11" @click="saveAdvanced" />
+          </div>
+        </UCard>
+      </template>
+    </UCollapsible>
+
+    <UCollapsible v-model:open="testPanel">
+      <UButton
+        color="neutral"
+        variant="ghost"
+        class="min-h-11"
+        trailing-icon="i-lucide-chevron-down"
+        label="Test a scrobble"
+      />
+      <template #content>
+        <UCard class="mt-2">
+          <div class="space-y-4">
+            <p class="text-xs text-muted">
+              Runs a <code class="text-default">rating_key</code> through the same pipeline as a
+              real Tautulli webhook — useful for checking id matching without waiting for playback.
+            </p>
+
+            <div class="grid gap-3 sm:grid-cols-3 sm:items-end">
+              <UFormField label="rating_key">
+                <UInput v-model="testRatingKey" placeholder="25419" class="w-full" />
+              </UFormField>
+              <UFormField label="username" hint="must have a seenr token mapped above">
+                <USelectMenu
+                  v-model="testUsername"
+                  :items="mappedUsernames"
+                  create-item
+                  placeholder="Select or type…"
+                  class="w-full"
+                  @create="(item) => { testUsername = item }"
+                />
+              </UFormField>
+              <UFormField label="action">
+                <USelectMenu v-model="testAction" :items="TEST_ACTIONS" class="w-full" />
+              </UFormField>
+            </div>
+
+            <div class="space-y-2">
+              <p class="text-xs text-muted">
+                <strong class="text-default">Preview</strong> only builds the payload — nothing is
+                sent and nothing is recorded.
+                <strong class="text-default">Send to seenr for real</strong> actually forwards it
+                to this user's seenr account and writes an event row.
+              </p>
+              <div class="flex flex-wrap gap-3">
+                <UButton
+                  color="neutral"
+                  variant="outline"
+                  icon="i-lucide-eye"
+                  label="Preview"
+                  class="min-h-11"
+                  :loading="previewBusy"
+                  :disabled="sendBusy"
+                  @click="runTest(true)"
+                />
+                <UButton
+                  color="warning"
+                  icon="i-lucide-send"
+                  label="Send to seenr for real"
+                  class="min-h-11"
+                  :loading="sendBusy"
+                  :disabled="previewBusy"
+                  @click="runTest(false)"
+                />
+              </div>
+            </div>
+
+            <div v-if="testResult" class="space-y-3 border-t border-default pt-4">
+              <div class="flex flex-wrap items-center gap-2">
+                <UBadge
+                  :color="testResult.ok ? 'success' : testResult.skipped ? 'warning' : 'error'"
+                  variant="subtle"
+                  :label="testResult.ok ? 'ok' : testResult.skipped ? 'skipped' : 'failed'"
+                />
+                <UBadge
+                  v-if="testResult.media_type"
+                  color="neutral"
+                  variant="subtle"
+                  :label="testResult.media_type"
+                />
+                <UBadge
+                  v-if="testResult.seenr_status"
+                  color="neutral"
+                  variant="subtle"
+                  :label="`seenr ${testResult.seenr_status}`"
+                />
+              </div>
+
+              <div v-if="testResult.title" class="text-sm font-medium">{{ testResult.title }}</div>
+              <div v-if="testResult.ids?.length" class="text-xs text-dimmed">
+                ids: {{ testResult.ids.join(', ') }}
+              </div>
+
+              <UAlert
+                v-if="testResult.reason"
+                :color="testResult.ok ? 'neutral' : testResult.skipped ? 'warning' : 'error'"
+                variant="subtle"
+                :description="testResult.reason"
+              />
+
+              <pre
+                v-if="testResult.payload"
+                class="max-h-64 overflow-auto rounded-lg bg-default p-3 text-xs"
+              >{{ testResultPayload }}</pre>
+            </div>
           </div>
         </UCard>
       </template>

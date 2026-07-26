@@ -94,7 +94,13 @@ async function guard(fn: () => Promise<void>, scope: 'library' | 'deep') {
   try {
     await fn()
   } catch (e) {
-    failed.value = apiErrorMessage(e, 'Tautulli lookup failed.')
+    // Two different rejection shapes reach here. A genuine $fetch rejection (401
+    // after the session expires, a network drop) carries an h3 statusMessage and
+    // an ugly `[GET] "/api/…": 401` in `.message`, so prefer the statusMessage.
+    // The endpoints' own {ok:false} states are re-thrown above as plain Errors
+    // whose `.message` IS the text we want — and those have no `.data`, so
+    // apiErrorMessage would otherwise swallow them for the fallback.
+    failed.value = apiErrorMessage(e, e instanceof Error ? e.message : 'Tautulli lookup failed.')
     if (scope === 'library') mode.value = 'key'
   } finally {
     busy.value = false
@@ -129,38 +135,55 @@ function pick(m: Mode) {
   if (m === 'tv') model.value = episode.value?.value ?? ''
   else if (m === 'movie') model.value = movie.value?.value ?? ''
   else model.value = ''
-  if (m === 'tv' && !shows.value.length) loadShows()
-  if (m === 'movie' && !movies.value.length) loadMovies()
+  // Re-entering a mode retries whatever is missing, so a lookup that failed
+  // earlier is recoverable without closing the panel. Re-selecting the same
+  // option cannot trigger a retry on its own: reka-ui assigns an identical
+  // object reference, so the watcher never fires.
+  if (m === 'movie') {
+    if (!movies.value.length) loadMovies()
+  } else if (m === 'tv') {
+    if (!shows.value.length) loadShows()
+    else if (season.value && !episodes.value.length) loadEpisodes(season.value)
+    else if (show.value && !seasons.value.length) loadSeasons(show.value)
+  }
+}
+
+// Extracted so pick() can retry a lookup that failed, not just the watchers.
+// Each re-asserts its own selection after awaiting: picking show A then B while
+// A is in flight would otherwise land A's seasons under B's name, and the user
+// submits an episode of the wrong show.
+function loadSeasons(s: Option) {
+  guard(async () => {
+    const rows = await children(s.value)
+    if (show.value !== s) return
+    seasons.value = rows.filter((c) => c.media_type === 'season')
+  }, 'deep')
+}
+
+function loadEpisodes(s: Option) {
+  guard(async () => {
+    const rows = await children(s.value)
+    if (season.value !== s) return
+    episodes.value = rows.filter((c) => c.media_type === 'episode')
+  }, 'deep')
 }
 
 onMounted(loadShows)
 
-// Each chained fetch re-asserts its own selection after awaiting. Without that,
-// picking show A then show B while A is still in flight can land A's seasons
-// under B's name, and the user submits an episode of the wrong show — the exact
-// wrong-title check-in this whole app exists to prevent.
 watch(show, (s) => {
   season.value = undefined
   episode.value = undefined
   seasons.value = []
   episodes.value = []
   model.value = ''
-  if (s) guard(async () => {
-    const rows = await children(s.value)
-    if (show.value !== s) return
-    seasons.value = rows.filter((c) => c.media_type === 'season')
-  }, 'deep')
+  if (s) loadSeasons(s)
 })
 
 watch(season, (s) => {
   episode.value = undefined
   episodes.value = []
   model.value = ''
-  if (s) guard(async () => {
-    const rows = await children(s.value)
-    if (season.value !== s) return
-    episodes.value = rows.filter((c) => c.media_type === 'episode')
-  }, 'deep')
+  if (s) loadEpisodes(s)
 })
 
 // Clear the key when a selection is cleared, rather than leaving a stale one.

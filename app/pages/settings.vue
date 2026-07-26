@@ -214,10 +214,10 @@ async function runTest(dryRun: boolean) {
 
     <SetupStep :n="1" title="Connect Tautulli" hint="where the bridge reads episode IDs">
       <div class="grid gap-4 sm:grid-cols-2">
-        <UFormField label="Tautulli URL" hint="e.g. http://tautulli:8181">
+        <UFormField label="Tautulli URL" help="e.g. http://tautulli:8181">
           <UInput v-model="store.settings.tautulli_url" placeholder="http://tautulli:8181" class="w-full" />
         </UFormField>
-        <UFormField label="API key" hint="Tautulli → Settings → Web Interface → API key">
+        <UFormField label="API key" help="Tautulli → Settings → Web Interface → API key">
           <UInput v-model="store.settings.tautulli_apikey" type="password" placeholder="xxxxxxxx" class="w-full" />
         </UFormField>
       </div>
@@ -258,7 +258,11 @@ async function runTest(dryRun: boolean) {
         </div>
       </div>
 
-      <div class="mt-4 grid gap-3 sm:grid-cols-[1fr_2fr_auto] sm:items-end">
+      <!-- items-start (not items-end): the token field's help text below its
+           input makes that cell taller than the plain username field, so
+           bottom-aligning would misalign the inputs. Top-aligning keeps the
+           inputs level since both labels are the same height. -->
+      <div class="mt-4 grid gap-3 sm:grid-cols-[1fr_2fr_auto] sm:items-start">
         <UFormField label="Plex username">
           <!-- Free text still allowed, so manual entry works when Tautulli
                is unreachable. Selecting the generated "Create …" option calls
@@ -274,10 +278,20 @@ async function runTest(dryRun: boolean) {
             @create="(item) => { newUser = item }"
           />
         </UFormField>
-        <UFormField label="seenr token" hint="the part after /scrobble/plex/ in your seenr URL">
+        <UFormField label="seenr token" help="the part after /scrobble/plex/ in your seenr URL">
           <UInput v-model="newToken" placeholder="9%7CyourSeenrToken" class="w-full" />
         </UFormField>
-        <UButton label="Add" class="min-h-11" @click="addMapping" />
+        <div>
+          <!-- The Add button has no label of its own, so with the row now
+               top-aligned it would sit level with the labels above, not the
+               inputs. This invisible spacer reproduces a label's height plus
+               the label-to-input gap (mirroring UFormField's own
+               labelWrapper + `mt-1` container spacing) purely to push the
+               button down to input level. See git show 2e675ca for the
+               pre-conversion React version, which used the same trick. -->
+          <div class="text-sm font-medium select-none" aria-hidden="true">&nbsp;</div>
+          <UButton label="Add" class="mt-1 min-h-11 w-full sm:w-auto" @click="addMapping" />
+        </div>
       </div>
     </SetupStep>
 
@@ -343,12 +357,12 @@ async function runTest(dryRun: boolean) {
               </div>
               <USwitch v-model="store.settings.forward_enabled" />
             </div>
-            <UFormField label="seenr base URL" hint="each user's token is appended to this">
+            <UFormField label="seenr base URL" help="each user's token is appended to this">
               <UInput v-model="store.settings.seenr_base_url" class="w-full" />
             </UFormField>
             <UFormField
               label="Bridge public URL"
-              hint="blank = auto-detect; set only behind a reverse proxy"
+              help="blank = auto-detect; set only behind a reverse proxy"
             >
               <UInput v-model="store.settings.bridge_url" placeholder="https://bridge.example.com" class="w-full" />
             </UFormField>
@@ -374,11 +388,14 @@ async function runTest(dryRun: boolean) {
               real Tautulli webhook — useful for checking id matching without waiting for playback.
             </p>
 
-            <div class="grid gap-3 sm:grid-cols-3 sm:items-end">
+            <!-- items-start (not items-end): the username field's help text
+                 below its input makes that cell taller than its siblings, so
+                 bottom-aligning would misalign the inputs. -->
+            <div class="grid gap-3 sm:grid-cols-3 sm:items-start">
               <UFormField label="rating_key">
                 <UInput v-model="testRatingKey" placeholder="25419" class="w-full" />
               </UFormField>
-              <UFormField label="username" hint="must have a seenr token mapped above">
+              <UFormField label="username" help="must have a seenr token mapped above">
                 <USelectMenu
                   v-model="testUsername"
                   :items="mappedUsernames"

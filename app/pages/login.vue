@@ -62,7 +62,7 @@ async function submit() {
 
         <UFormField
           label="Password"
-          :hint="isSetup ? 'At least 8 characters' : undefined"
+          :help="isSetup ? 'At least 8 characters' : undefined"
         >
           <UInput
             v-model="password"

@@ -65,7 +65,7 @@ const menuItems = computed(() => [
         <UFormField label="Current password">
           <UInput v-model="current" type="password" autocomplete="current-password" class="w-full" />
         </UFormField>
-        <UFormField label="New password" hint="At least 8 characters">
+        <UFormField label="New password" help="At least 8 characters">
           <UInput v-model="next" type="password" autocomplete="new-password" class="w-full" />
         </UFormField>
         <UFormField label="Confirm new password">

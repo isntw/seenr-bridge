@@ -35,6 +35,7 @@ const movie = ref<Option | undefined>()
 
 const busy = ref(false)
 const failed = ref('')
+const failedScope = ref<'library' | 'deep'>('library')
 
 function titleOf(i: LibraryItem): string {
   return i.year ? `${i.title} (${i.year})` : i.title
@@ -58,6 +59,15 @@ const truncated = computed(() => mode.value !== 'key' && total.value > shown.val
 const emptyLibrary = computed(
   () => mode.value !== 'key' && !busy.value && !failed.value && shown.value === 0,
 )
+
+// The library list has emptyLibrary; the drill-down levels had no equivalent, so
+// a lookup returning nothing left an empty enabled select and no explanation.
+const noChildren = computed(() => {
+  if (mode.value !== 'tv' || busy.value || failed.value) return false
+  if (season.value && !episodes.value.length) return 'episodes'
+  if (show.value && !seasons.value.length) return 'seasons'
+  return false
+})
 
 async function library(type: 'show' | 'movie'): Promise<{ items: LibraryItem[]; total: number }> {
   const r = await $fetch<{ ok: boolean; items: LibraryItem[]; total: number; error?: string }>(
@@ -88,19 +98,18 @@ const NOT_CONFIGURED = 'Tautulli isn’t configured yet — add its URL and API 
 //
 // `failed` is cleared when an operation STARTS and never on success — otherwise
 // an overlapping success erases the message explaining a failure it didn't cause.
-async function guard(fn: () => Promise<void>, scope: 'library' | 'deep') {
+async function guard(fn: () => Promise<void>, scope: 'library' | 'deep', isStale?: () => boolean) {
   busy.value = true
   failed.value = ''
   try {
     await fn()
   } catch (e) {
-    // Two different rejection shapes reach here. A genuine $fetch rejection (401
-    // after the session expires, a network drop) carries an h3 statusMessage and
-    // an ugly `[GET] "/api/…": 401` in `.message`, so prefer the statusMessage.
-    // The endpoints' own {ok:false} states are re-thrown above as plain Errors
-    // whose `.message` IS the text we want — and those have no `.data`, so
-    // apiErrorMessage would otherwise swallow them for the fallback.
+    // A superseded request must not report its error over the newer one's
+    // results — the success path already re-asserts its selection, and the
+    // failure path needs the same check.
+    if (isStale?.()) return
     failed.value = apiErrorMessage(e, e instanceof Error ? e.message : 'Tautulli lookup failed.')
+    failedScope.value = scope
     if (scope === 'library') mode.value = 'key'
   } finally {
     busy.value = false
@@ -157,7 +166,7 @@ function loadSeasons(s: Option) {
     const rows = await children(s.value)
     if (show.value !== s) return
     seasons.value = rows.filter((c) => c.media_type === 'season')
-  }, 'deep')
+  }, 'deep', () => show.value !== s)
 }
 
 function loadEpisodes(s: Option) {
@@ -165,7 +174,7 @@ function loadEpisodes(s: Option) {
     const rows = await children(s.value)
     if (season.value !== s) return
     episodes.value = rows.filter((c) => c.media_type === 'episode')
-  }, 'deep')
+  }, 'deep', () => season.value !== s)
 }
 
 onMounted(loadShows)
@@ -195,7 +204,7 @@ watch(movie, (m) => { model.value = m ? m.value : '' })
   <div class="space-y-3">
     <!-- UFieldGroup, NOT UButtonGroup — the latter was renamed in Nuxt UI v4 and
          the old name silently renders nothing. -->
-    <UFieldGroup aria-label="Item source">
+    <UFieldGroup role="group" aria-label="Item source">
       <UButton
         v-for="m in MODES"
         :key="m.value"
@@ -247,7 +256,10 @@ watch(movie, (m) => { model.value = m ? m.value : '' })
     </div>
 
     <p v-if="failed" class="text-xs text-warning" role="status">
-      {{ failed }} — paste a rating_key instead.
+      {{ failed }}{{ failedScope === 'library' ? ' — paste a rating_key instead.' : '' }}
+    </p>
+    <p v-else-if="noChildren" class="text-xs text-warning" role="status">
+      Tautulli returned no {{ noChildren }} for that selection.
     </p>
     <p v-else-if="emptyLibrary" class="text-xs text-warning" role="status">
       Tautulli reports no {{ mode === 'tv' ? 'TV' : 'movie' }} libraries. Try the other tab, or paste

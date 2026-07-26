@@ -19,6 +19,15 @@ export const useSettingsStore = defineStore('settings', () => {
     settings.value = await $fetch<Settings>('/api/settings', { method: 'PUT', body: patch })
   }
 
+  // Forwarding is toggled from the page header, where other fields may hold
+  // unsaved edits. save() replaces the whole settings object with the server's
+  // row, which would silently revert them — so this merges back only the one
+  // field it owns.
+  async function setForwarding(v: boolean) {
+    const s = await $fetch<Settings>('/api/settings', { method: 'PUT', body: { forward_enabled: v } })
+    if (settings.value) settings.value.forward_enabled = s.forward_enabled
+  }
+
   async function saveMapping(m: {
     username: string
     seenr_token: string
@@ -56,6 +65,6 @@ export const useSettingsStore = defineStore('settings', () => {
 
   return {
     settings, mappings, tautulliUsers,
-    fetch, save, saveMapping, removeMapping, testTautulli, syncWebhook, fetchTautulliUsers,
+    fetch, save, setForwarding, saveMapping, removeMapping, testTautulli, syncWebhook, fetchTautulliUsers,
   }
 })

@@ -15,7 +15,7 @@ onMounted(() => {
 onBeforeUnmount(() => status.stop())
 
 const TRIGGERS = [
-  { key: 'watched', label: 'Watched', recommended: true },
+  { key: 'watched', label: 'Watched' },
   { key: 'play', label: 'Play' },
   { key: 'stop', label: 'Stop' },
   { key: 'pause', label: 'Pause' },
@@ -86,8 +86,15 @@ const connStatus = computed<'ok' | 'bad' | 'pending'>(() =>
 const connStatusText = computed(() =>
   status.tautulli === null ? 'checking…' : status.tautulli.ok ? 'connected' : 'unreachable',
 )
-const hookStatus = computed<'ok' | 'bad'>(() => (status.webhook ? 'ok' : 'bad'))
-const hookStatusText = computed(() => (status.webhook ? 'active' : 'not set up'))
+// status.webhook initialises to false, so without a pending state this pill
+// renders a red "not set up" on every fresh load until the first poll returns.
+// status.tautulli === null is an exact proxy for "no poll has completed yet".
+const hookStatus = computed<'ok' | 'bad' | 'pending'>(() =>
+  status.tautulli === null ? 'pending' : status.webhook ? 'ok' : 'bad',
+)
+const hookStatusText = computed(() =>
+  status.tautulli === null ? 'checking…' : status.webhook ? 'active' : 'not set up',
+)
 
 async function saveConnection() {
   saving.value = true
@@ -191,7 +198,7 @@ async function toggleForwarding(v: boolean) {
   forwardingBusy.value = true
   store.settings!.forward_enabled = v
   try {
-    await store.save({ forward_enabled: v })
+    await store.setForwarding(v)
     toast.add({ title: v ? 'Forwarding enabled.' : 'Forwarding paused.', color: 'success' })
   } catch (e) {
     store.settings!.forward_enabled = prev
@@ -207,7 +214,7 @@ async function toggleForwarding(v: boolean) {
 // result is page-local scratch state, not shared app state like settings.
 async function runTest(dryRun: boolean) {
   if (!testRatingKey.value.trim() || !testUsername.value.trim()) {
-    toast.add({ title: 'rating_key and username are both required.', color: 'error' })
+    toast.add({ title: 'Pick an item and a user first.', color: 'error' })
     return
   }
   const busy = dryRun ? previewBusy : sendBusy
@@ -240,16 +247,21 @@ async function runTest(dryRun: boolean) {
         <span class="flex items-center gap-1.5">
           <span
             class="size-1.5 rounded-full"
-            :class="status.tautulli === null ? 'bg-neutral-500' : status.tautulli.ok ? 'bg-success' : 'bg-error'"
+            :class="connStatus === 'pending' ? 'bg-neutral-500' : connStatus === 'ok' ? 'bg-success' : 'bg-error'"
           />
           <span class="text-muted">
-            {{ status.tautulli === null ? 'checking…' : status.tautulli.ok ? 'Tautulli connected' : 'Tautulli offline' }}
+            {{ connStatus === 'pending' ? 'checking…' : connStatus === 'ok' ? 'Tautulli connected' : 'Tautulli unreachable' }}
           </span>
         </span>
         <span class="text-dimmed">{{ status.users }} {{ status.users === 1 ? 'user' : 'users' }}</span>
         <span class="flex items-center gap-1.5">
-          <span class="size-1.5 rounded-full" :class="status.webhook ? 'bg-success' : 'bg-error'" />
-          <span class="text-muted">{{ status.webhook ? 'webhook active' : 'no webhook' }}</span>
+          <span
+            class="size-1.5 rounded-full"
+            :class="hookStatus === 'pending' ? 'bg-neutral-500' : hookStatus === 'ok' ? 'bg-success' : 'bg-error'"
+          />
+          <span class="text-muted">
+            {{ hookStatus === 'pending' ? 'checking…' : hookStatus === 'ok' ? 'webhook active' : 'no webhook' }}
+          </span>
         </span>
         <!-- The master kill switch, promoted out of Advanced. min-h-11 on the
              label keeps the whole hit area at the touch floor. -->
@@ -281,7 +293,7 @@ async function runTest(dryRun: boolean) {
           URL e.g. <code class="text-default">http://tautulli:8181</code> · key from Tautulli →
           Settings → Web Interface → API key
         </p>
-        <div class="flex flex-col gap-3 border-t border-default pt-4 sm:flex-row sm:justify-end">
+        <div class="flex flex-col gap-3 border-t border-default pt-4 pb-5 sm:flex-row sm:justify-end">
           <!-- Below sm the row stacks with the primary on top (order-1), so the
                action you almost always want is the first control you meet as the
                row scrolls into view; the secondary drops beneath it. -->
@@ -322,7 +334,7 @@ async function runTest(dryRun: boolean) {
               : 'bg-default text-muted ring-default hover:text-default'"
             @click="toggleTrigger(t.key, !isTriggerSelected(t.key))"
           >
-            {{ t.label }}
+            <span aria-hidden="true" class="mr-1 inline-block w-3 text-center">{{ isTriggerSelected(t.key) ? '✓' : '' }}</span>{{ t.label }}
           </button>
         </div>
         <div class="flex border-t border-default pt-4 sm:justify-end">

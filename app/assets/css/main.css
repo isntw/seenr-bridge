@@ -1,2 +1,57 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
+
+/* Two one-off surfaces the pre-Nuxt design used that have no Nuxt UI token of
+   their own: the sidebar rail and the raised panel behind modals and menus.
+   Registering them here makes them real utilities (bg-rail / bg-panel) instead
+   of arbitrary hex values sprinkled through the templates. */
+@theme {
+  --color-rail: #0b0f18;
+  --color-panel: #0e1320;
+}
+
+/* The app is forced dark (colorMode.preference in nuxt.config), and with
+   ssr:false the .dark class only lands once the color-mode script runs — so
+   paint the page colour unconditionally to avoid a white flash, exactly as the
+   pre-Nuxt app's index.css did. */
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  background-color: #0a0e16;
+}
+
+/* Nuxt UI's dark design tokens, retuned to the pre-Nuxt palette. Every surface
+   in app/ is drawn with the semantic utilities that read these (bg-default,
+   bg-elevated, ring-default, text-muted, …), so retuning them here shifts the
+   whole UI at once.
+   These are the real token names — @nuxt/ui/dist/runtime/index.css sets exactly
+   this list under `.dark`, and .nuxt/ui.css maps them onto Tailwind utilities
+   (--background-color-default: var(--ui-bg), and so on). This rule is
+   deliberately unlayered: Nuxt UI declares its values inside `@layer theme`,
+   and unlayered declarations outbid any layer. */
+.dark {
+  /* Page, and everything that sits at page level: modal/menu content before
+     its own override, inputs, the <pre> payload blocks. */
+  --ui-bg: #0a0e16;
+  /* Cards use this at 50% (bg-elevated/50), which lands on the old
+     bg-white/[0.02]; code chips and placeholders use it solid, landing on the
+     old bg-white/5. */
+  --ui-bg-elevated: #161b26;
+  /* --ui-bg-muted and --ui-bg-inverted are left alone: bg-inverted is white in
+     dark mode and the profile chips' bg-inverted/15 tint depends on that. */
+
+  /* The old design outlined everything with translucent white rather than a
+     flat grey, which is what keeps a card readable both on the page and on top
+     of another card. Custom properties can carry the alpha directly, so
+     ring-default / border-default / divide-default all inherit it. */
+  --ui-border: rgb(255 255 255 / 0.1);
+  --ui-border-muted: rgb(255 255 255 / 0.06);
+  --ui-border-accented: rgb(255 255 255 / 0.14);
+
+  /* Body copy. The rest of the ramp (muted -> neutral-400, dimmed ->
+     neutral-500, highlighted -> #fff) already matches the old slate ramp. */
+  --ui-text: #e5e7eb;
+}

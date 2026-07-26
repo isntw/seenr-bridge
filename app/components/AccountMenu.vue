@@ -51,11 +51,19 @@ const menuItems = computed(() => [
 
 <template>
   <UDropdownMenu :items="menuItems">
-    <UButton color="neutral" variant="ghost" class="min-h-11 gap-2.5">
-      <UAvatar :alt="initials" size="sm" />
+    <!-- The old trigger was a filled pill (bg-white/5, ring-white/10), not a
+         bare ghost button — `subtle` is Nuxt UI's equivalent of that. -->
+    <UButton color="neutral" variant="subtle" class="min-h-11 gap-2.5 rounded-full py-1 pl-1 pr-3">
+      <!-- `text` renders the two-letter initials verbatim; `alt` would have Nuxt
+           UI derive its own initials from them and show a single letter. -->
+      <UAvatar
+        :text="initials"
+        size="sm"
+        :ui="{ root: 'bg-primary-500/20', fallback: 'text-primary-200 text-xs font-semibold' }"
+      />
       <!-- Username is noise on a phone; the avatar carries the affordance. -->
-      <span class="hidden sm:block max-w-35 truncate text-sm">{{ username }}</span>
-      <UIcon name="i-lucide-chevron-down" class="size-4" />
+      <span class="hidden sm:block max-w-35 truncate text-sm text-muted">{{ username }}</span>
+      <UIcon name="i-lucide-chevron-down" class="size-4 text-dimmed" />
     </UButton>
   </UDropdownMenu>
 
@@ -75,7 +83,7 @@ const menuItems = computed(() => [
     </template>
     <template #footer>
       <div class="flex justify-end gap-3">
-        <UButton color="neutral" variant="ghost" label="Cancel" @click="open = false; reset()" />
+        <UButton color="neutral" variant="subtle" label="Cancel" @click="open = false; reset()" />
         <UButton :loading="busy" label="Update password" @click="submit" />
       </div>
     </template>

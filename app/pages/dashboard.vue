@@ -24,11 +24,12 @@ let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => { timer = setInterval(refresh, 5000) })
 onBeforeUnmount(() => clearInterval(timer))
 
+// Tile accents mirror the old white / violet-300 / sky-300 / emerald-300 set.
 const tiles = computed(() => [
-  { label: 'Total', icon: 'i-lucide-layers', value: stats.value?.total ?? '—', class: '' },
-  { label: 'Episodes', icon: 'i-lucide-tv', value: stats.value?.episodes ?? '—', class: 'text-primary' },
-  { label: 'Movies', icon: 'i-lucide-film', value: stats.value?.movies ?? '—', class: 'text-info' },
-  { label: 'Users', icon: 'i-lucide-users', value: stats.value?.users ?? '—', class: 'text-success' },
+  { label: 'Total', icon: 'i-lucide-layers', value: stats.value?.total ?? '—', class: 'text-highlighted' },
+  { label: 'Episodes', icon: 'i-lucide-tv', value: stats.value?.episodes ?? '—', class: 'text-primary-300' },
+  { label: 'Movies', icon: 'i-lucide-film', value: stats.value?.movies ?? '—', class: 'text-info-300' },
+  { label: 'Users', icon: 'i-lucide-users', value: stats.value?.users ?? '—', class: 'text-success-300' },
 ])
 
 const remaining = computed(() =>
@@ -42,7 +43,7 @@ const remaining = computed(() =>
     <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
       <UCard v-for="t in tiles" :key="t.label" :ui="{ body: 'px-4 py-3 sm:px-5 sm:py-4' }">
         <div class="flex items-center gap-2 text-xs uppercase tracking-wider text-muted">
-          <UIcon :name="t.icon" class="size-4" />
+          <UIcon :name="t.icon" class="size-4 text-dimmed" />
           <span class="truncate">{{ t.label }}</span>
         </div>
         <div class="mt-2 text-2xl font-semibold sm:text-3xl" :class="t.class">{{ t.value }}</div>
@@ -53,12 +54,12 @@ const remaining = computed(() =>
       <template #header>
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 class="text-sm font-semibold">Recent scrobbles</h2>
+            <h2 class="text-sm font-semibold tracking-wide text-highlighted">Recent scrobbles</h2>
             <p class="mt-0.5 text-xs text-muted">Live — refreshes every 5s</p>
           </div>
           <UButton
             color="neutral"
-            variant="ghost"
+            variant="subtle"
             label="Refresh"
             icon="i-lucide-refresh-cw"
             class="min-h-11"
@@ -80,7 +81,9 @@ const remaining = computed(() =>
         <code class="text-default">/api/webhook/tautulli</code> and play something.
       </div>
 
-      <div v-else class="divide-y divide-default">
+      <!-- divide-muted, not divide-default: the old list rule was white/5 while
+           the card outline itself was white/10. -->
+      <div v-else class="divide-y divide-muted">
         <EventRow v-for="e in events" :key="e.id" :event="e" />
       </div>
 
@@ -88,7 +91,7 @@ const remaining = computed(() =>
         <div class="text-center">
           <UButton
             color="neutral"
-            variant="ghost"
+            variant="subtle"
             class="min-h-11"
             :label="`Load more · ${remaining} older`"
             @click="limit += 25"

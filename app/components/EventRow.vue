@@ -60,7 +60,7 @@ const pretty = computed(() => {
   <div>
     <button
       type="button"
-      class="relative flex w-full items-start gap-3 py-3 pl-4 pr-2 text-left transition hover:bg-elevated/50"
+      class="relative flex w-full items-start gap-3 py-3 pl-4 pr-2 text-left transition hover:bg-elevated/60"
       :aria-expanded="open"
       @click="open = !open"
     >
@@ -82,7 +82,7 @@ const pretty = computed(() => {
 
       <div class="min-w-0 flex-1">
         <div class="flex flex-wrap items-center gap-2">
-          <h3 class="min-w-0 truncate text-[15px] font-semibold">{{ derived.main }}</h3>
+          <h3 class="min-w-0 truncate text-[15px] font-semibold tracking-tight text-highlighted">{{ derived.main }}</h3>
           <UBadge
             :color="event.media_type === 'movie' ? 'info' : 'primary'"
             variant="subtle"
@@ -115,12 +115,14 @@ const pretty = computed(() => {
       </div>
     </button>
 
-    <div v-if="open" class="bg-elevated/40 px-4 pb-4">
+    <!-- bg-default is darker than the card, matching the old bg-black/30 well. -->
+    <div v-if="open" class="bg-default px-4 pb-4">
       <UAlert v-if="event.error" color="error" variant="subtle" class="mb-2 mt-3" :description="event.error" />
       <div class="mb-1 pt-3 text-xs text-dimmed">
         rating_key {{ event.rating_key }} · event {{ event.event }} · ids: {{ event.ids.join(', ') || 'none' }}
       </div>
-      <pre class="max-h-64 overflow-auto rounded-lg bg-default p-3 text-xs">{{ pretty }}</pre>
+      <!-- Ringed, because the panel behind it is already bg-default. -->
+      <pre class="max-h-64 overflow-auto rounded-lg bg-default p-3 text-xs ring-1 ring-default">{{ pretty }}</pre>
     </div>
   </div>
 </template>

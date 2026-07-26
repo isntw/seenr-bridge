@@ -215,7 +215,7 @@ function setOnlyNew(ratingKey: string, value: boolean) {
   <div class="space-y-4">
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div>
-        <h2 class="text-lg font-semibold">Shared / co-watched</h2>
+        <h2 class="text-lg font-semibold text-highlighted">Shared / co-watched</h2>
         <p class="mt-0.5 text-sm text-muted">
           Pick titles you watch together. A watch from any assigned profile scrobbles to all of them.
         </p>
@@ -262,7 +262,7 @@ function setOnlyNew(ratingKey: string, value: boolean) {
             :placeholder="`Search ${type === 'show' ? 'shows' : 'movies'}…`"
             class="min-w-0 flex-1"
           />
-          <UButton type="submit" color="neutral" variant="ghost" label="Search" class="min-h-11" />
+          <UButton type="submit" color="neutral" variant="subtle" label="Search" class="min-h-11" />
         </form>
 
         <!-- UCheckbox emits 'indeterminate' as well as booleans, so v-model on a
@@ -292,11 +292,15 @@ function setOnlyNew(ratingKey: string, value: boolean) {
           </p>
         </UCard>
 
+        <!-- Rows are `outline`, not the app-wide `subtle` default: the old row
+             was bg-black/20 with a white/10 border, i.e. recessed to page level
+             rather than raised like a card. Tinted violet once shared. -->
         <UCard
           v-for="row in rows"
           :key="row.rating_key"
-          :ui="{ body: 'p-3 sm:p-3' }"
-          :class="row.isShared ? 'bg-primary/5 ring-primary/25' : ''"
+          variant="outline"
+          :ui="{ root: 'rounded-xl', body: 'p-3 sm:p-3' }"
+          :class="row.isShared ? 'bg-primary-500/[0.06] ring-primary-500/30' : ''"
         >
           <div class="flex gap-3">
             <img
@@ -310,7 +314,7 @@ function setOnlyNew(ratingKey: string, value: boolean) {
 
             <div class="min-w-0 flex-1">
               <div class="flex flex-wrap items-center gap-2">
-                <span class="min-w-0 truncate text-sm font-medium">{{ row.title }}</span>
+                <span class="min-w-0 truncate text-sm font-medium text-highlighted">{{ row.title }}</span>
                 <span v-if="row.year" class="text-xs text-dimmed">{{ row.year }}</span>
                 <UBadge
                   :color="row.isShow ? 'primary' : 'info'"
@@ -352,7 +356,7 @@ function setOnlyNew(ratingKey: string, value: boolean) {
                   <template v-else>
                     <UButton
                       color="neutral"
-                      variant="outline"
+                      variant="subtle"
                       label="Sync all previous episodes"
                       class="min-h-11"
                       :loading="busyKey === row.rating_key"
@@ -361,7 +365,7 @@ function setOnlyNew(ratingKey: string, value: boolean) {
                     />
                     <UButton
                       color="neutral"
-                      variant="ghost"
+                      variant="subtle"
                       label="Only new ones"
                       class="min-h-11"
                       @click="setOnlyNew(row.rating_key, true)"
@@ -371,7 +375,7 @@ function setOnlyNew(ratingKey: string, value: boolean) {
                 <UButton
                   v-else
                   color="neutral"
-                  variant="outline"
+                  variant="subtle"
                   label="Sync now"
                   class="min-h-11"
                   :loading="busyKey === row.rating_key"
@@ -394,7 +398,7 @@ function setOnlyNew(ratingKey: string, value: boolean) {
       <div v-if="!sharedOnly && items.length < total" class="pt-1 text-center">
         <UButton
           color="neutral"
-          variant="ghost"
+          variant="subtle"
           class="min-h-11"
           :loading="loading"
           :label="`Load more (${items.length}/${total})`"

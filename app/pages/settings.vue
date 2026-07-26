@@ -194,22 +194,26 @@ async function runTest(dryRun: boolean) {
 
 <template>
   <div v-if="store.settings" class="space-y-4">
-    <!-- Status line: wraps rather than overflowing on narrow screens. -->
-    <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-      <span class="flex items-center gap-1.5">
-        <span
-          class="size-1.5 rounded-full"
-          :class="status.tautulli === null ? 'bg-muted' : status.tautulli.ok ? 'bg-success' : 'bg-error'"
-        />
-        <span class="text-muted">
-          {{ status.tautulli === null ? 'checking…' : status.tautulli.ok ? 'Tautulli connected' : 'Tautulli offline' }}
+    <!-- "Setup" on the left, the live status line on the right — the old page
+         header. Both wrap rather than overflowing on narrow screens. -->
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <h2 class="text-lg font-semibold text-highlighted">Setup</h2>
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+        <span class="flex items-center gap-1.5">
+          <span
+            class="size-1.5 rounded-full"
+            :class="status.tautulli === null ? 'bg-neutral-500' : status.tautulli.ok ? 'bg-success' : 'bg-error'"
+          />
+          <span class="text-muted">
+            {{ status.tautulli === null ? 'checking…' : status.tautulli.ok ? 'Tautulli connected' : 'Tautulli offline' }}
+          </span>
         </span>
-      </span>
-      <span class="text-dimmed">{{ status.users }} {{ status.users === 1 ? 'user' : 'users' }}</span>
-      <span class="flex items-center gap-1.5">
-        <span class="size-1.5 rounded-full" :class="status.webhook ? 'bg-success' : 'bg-error'" />
-        <span class="text-muted">{{ status.webhook ? 'webhook active' : 'no webhook' }}</span>
-      </span>
+        <span class="text-dimmed">{{ status.users }} {{ status.users === 1 ? 'user' : 'users' }}</span>
+        <span class="flex items-center gap-1.5">
+          <span class="size-1.5 rounded-full" :class="status.webhook ? 'bg-success' : 'bg-error'" />
+          <span class="text-muted">{{ status.webhook ? 'webhook active' : 'no webhook' }}</span>
+        </span>
+      </div>
     </div>
 
     <SetupStep :n="1" title="Connect Tautulli" hint="where the bridge reads episode IDs">
@@ -222,7 +226,7 @@ async function runTest(dryRun: boolean) {
         </UFormField>
       </div>
       <div class="mt-4 flex flex-wrap gap-3">
-        <UButton color="neutral" variant="ghost" label="Test connection" class="min-h-11" @click="testConnection" />
+        <UButton color="neutral" variant="subtle" label="Test connection" class="min-h-11" @click="testConnection" />
         <UButton :loading="saving" label="Save" class="min-h-11" @click="saveConnection" />
       </div>
     </SetupStep>
@@ -235,10 +239,10 @@ async function runTest(dryRun: boolean) {
         <div
           v-for="m in store.mappings"
           :key="m.id"
-          class="flex flex-col gap-2 rounded-lg bg-elevated/40 px-3 py-2.5 ring-1 ring-default sm:flex-row sm:items-center sm:gap-3"
+          class="flex flex-col gap-2 rounded-lg bg-default px-3 py-2.5 ring-1 ring-default sm:flex-row sm:items-center sm:gap-3"
         >
           <div class="min-w-0 flex-1">
-            <div class="flex items-center gap-2 text-sm font-medium">
+            <div class="flex items-center gap-2 text-sm font-medium text-highlighted">
               <span class="truncate">{{ m.username }}</span>
               <UBadge v-if="!m.enabled" color="neutral" variant="subtle" size="sm" label="paused" />
             </div>
@@ -250,7 +254,7 @@ async function runTest(dryRun: boolean) {
           </div>
           <UButton
             color="neutral"
-            variant="ghost"
+            variant="subtle"
             label="Configure"
             class="min-h-11 self-start sm:self-auto"
             @click="edit = { ...m }"
@@ -316,40 +320,49 @@ async function runTest(dryRun: boolean) {
 
       <UButton :loading="syncing" label="Sync to Tautulli" class="min-h-11" @click="runSync" />
 
-      <UCollapsible v-model:open="manual" class="mt-4">
-        <UButton
-          color="neutral"
-          variant="ghost"
-          class="min-h-11"
-          trailing-icon="i-lucide-chevron-down"
-          label="Set it up manually instead"
-        />
-        <template #content>
-          <div class="space-y-3 pt-3">
-            <CopyField label="Webhook URL" :value="webhookUrl" />
-            <CopyField label="Method" value="POST" />
-            <CopyField label="Headers" :value="'{&quot;Content-Type&quot;: &quot;application/json&quot;}'" />
-            <CopyField
-              label="JSON body"
-              :value="'{&quot;action&quot;: &quot;{action}&quot;, &quot;rating_key&quot;: &quot;{rating_key}&quot;, &quot;username&quot;: &quot;{username}&quot;}'"
-              hint="Paste into a Tautulli Webhook agent for each trigger you enable."
+      <!-- Old design: a collapsible is a card whose header *is* the toggle, with
+           a chevron that rotates open — not a bare text button on the page. -->
+      <UCard :ui="{ body: 'p-0 sm:p-0' }" class="mt-4">
+        <UCollapsible v-model:open="manual">
+          <UButton color="neutral" variant="ghost" class="w-full min-h-11 gap-2.5 px-5 py-3.5">
+            <UIcon
+              name="i-lucide-chevron-right"
+              class="size-4 shrink-0 text-muted transition-transform"
+              :class="manual ? 'rotate-90' : ''"
             />
-          </div>
-        </template>
-      </UCollapsible>
+            <span class="text-sm font-semibold text-highlighted">Set it up manually instead</span>
+          </UButton>
+          <template #content>
+            <div class="space-y-4 border-t border-default p-5">
+              <CopyField label="Webhook URL" :value="webhookUrl" />
+              <CopyField label="Method" value="POST" />
+              <CopyField label="Headers" :value="'{&quot;Content-Type&quot;: &quot;application/json&quot;}'" />
+              <CopyField
+                label="JSON body"
+                :value="'{&quot;action&quot;: &quot;{action}&quot;, &quot;rating_key&quot;: &quot;{rating_key}&quot;, &quot;username&quot;: &quot;{username}&quot;}'"
+                hint="Paste into a Tautulli Webhook agent for each trigger you enable."
+              />
+            </div>
+          </template>
+        </UCollapsible>
+      </UCard>
     </SetupStep>
 
-    <UCollapsible v-model:open="advanced">
-      <UButton
-        color="neutral"
-        variant="ghost"
-        class="min-h-11"
-        trailing-icon="i-lucide-chevron-down"
-        label="Advanced"
-      />
-      <template #content>
-        <UCard class="mt-2">
-          <div class="space-y-4">
+    <UCard :ui="{ body: 'p-0 sm:p-0' }">
+      <UCollapsible v-model:open="advanced">
+        <UButton color="neutral" variant="ghost" class="w-full min-h-11 gap-2.5 px-5 py-3.5">
+          <UIcon
+            name="i-lucide-chevron-right"
+            class="size-4 shrink-0 text-muted transition-transform"
+            :class="advanced ? 'rotate-90' : ''"
+          />
+          <span class="text-sm font-semibold text-highlighted">Advanced</span>
+          <span class="ml-auto hidden text-xs text-dimmed sm:block">
+            forwarding · seenr URL · bridge URL
+          </span>
+        </UButton>
+        <template #content>
+          <div class="space-y-4 border-t border-default p-5">
             <div class="flex items-center justify-between gap-3">
               <div class="min-w-0">
                 <div class="text-sm font-medium">Forward to seenr</div>
@@ -368,21 +381,25 @@ async function runTest(dryRun: boolean) {
             </UFormField>
             <UButton label="Save" class="min-h-11" @click="saveAdvanced" />
           </div>
-        </UCard>
-      </template>
-    </UCollapsible>
+        </template>
+      </UCollapsible>
+    </UCard>
 
-    <UCollapsible v-model:open="testPanel">
-      <UButton
-        color="neutral"
-        variant="ghost"
-        class="min-h-11"
-        trailing-icon="i-lucide-chevron-down"
-        label="Test a scrobble"
-      />
-      <template #content>
-        <UCard class="mt-2">
-          <div class="space-y-4">
+    <UCard :ui="{ body: 'p-0 sm:p-0' }">
+      <UCollapsible v-model:open="testPanel">
+        <UButton color="neutral" variant="ghost" class="w-full min-h-11 gap-2.5 px-5 py-3.5">
+          <UIcon
+            name="i-lucide-chevron-right"
+            class="size-4 shrink-0 text-muted transition-transform"
+            :class="testPanel ? 'rotate-90' : ''"
+          />
+          <span class="text-sm font-semibold text-highlighted">Test a scrobble</span>
+          <span class="ml-auto hidden text-xs text-dimmed sm:block">
+            send a rating_key through the pipeline
+          </span>
+        </UButton>
+        <template #content>
+          <div class="space-y-4 border-t border-default p-5">
             <p class="text-xs text-muted">
               Runs a <code class="text-default">rating_key</code> through the same pipeline as a
               real Tautulli webhook — useful for checking id matching without waiting for playback.
@@ -428,8 +445,10 @@ async function runTest(dryRun: boolean) {
                   :disabled="sendBusy"
                   @click="runTest(true)"
                 />
+                <!-- error (rose), not warning (amber): this is the destructive
+                     half of the pair, and amber is not in this palette. -->
                 <UButton
-                  color="warning"
+                  color="error"
                   icon="i-lucide-send"
                   label="Send to seenr for real"
                   class="min-h-11"
@@ -475,13 +494,13 @@ async function runTest(dryRun: boolean) {
 
               <pre
                 v-if="testResult.payload"
-                class="max-h-64 overflow-auto rounded-lg bg-default p-3 text-xs"
+                class="max-h-64 overflow-auto rounded-lg bg-default p-3 text-xs ring-1 ring-default"
               >{{ testResultPayload }}</pre>
             </div>
           </div>
-        </UCard>
-      </template>
-    </UCollapsible>
+        </template>
+      </UCollapsible>
+    </UCard>
 
     <UModal
       :open="!!edit"
@@ -511,7 +530,7 @@ async function runTest(dryRun: boolean) {
         <div class="flex w-full flex-wrap justify-between gap-3">
           <UButton color="error" variant="ghost" label="Remove" class="min-h-11" @click="removeEdit" />
           <div class="flex gap-3">
-            <UButton color="neutral" variant="ghost" label="Cancel" class="min-h-11" @click="edit = null" />
+            <UButton color="neutral" variant="subtle" label="Cancel" class="min-h-11" @click="edit = null" />
             <UButton label="Save" class="min-h-11" @click="saveEdit" />
           </div>
         </div>

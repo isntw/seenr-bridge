@@ -1,4 +1,4 @@
-import { getSettings, saveSettings, settingsToWire, type SettingsRow } from '../../utils/db'
+import { saveSettings, settingsToWire, type SettingsRow } from '../../utils/db'
 import type { Settings } from '../../../shared/types'
 
 function validate(raw: unknown): Partial<SettingsRow> {

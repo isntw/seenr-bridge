@@ -1760,7 +1760,7 @@ export default defineEventHandler(async (event): Promise<SyncResult> => {
   }
   const webhookUrl = `${baseUrl}/api/webhook/tautulli`
 
-  const body = await readBody<{ triggers?: unknown }>(event).catch(() => ({}))
+  const body = await readBody<{ triggers?: unknown }>(event).catch(() => ({}) as Record<string, unknown>)
   const triggers = Array.isArray(body?.triggers)
     ? body.triggers.filter((t): t is string => typeof t === 'string')
     : undefined
@@ -2009,7 +2009,7 @@ Two behaviours must survive the port. First, Tautulli sends either JSON or form-
 import { processEvent } from '../../utils/pipeline'
 
 export default defineEventHandler(async (event) => {
-  const b = (await readBody<Record<string, unknown>>(event).catch(() => ({}))) ?? {}
+  const b = (await readBody<Record<string, unknown>>(event).catch(() => ({}) as Record<string, unknown>)) ?? {}
 
   const rating_key = b.rating_key ?? b.ratingKey
   const username = b.username ?? b.user

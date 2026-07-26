@@ -327,14 +327,15 @@ async function runTest(dryRun: boolean) {
     </SetupStep>
 
     <SetupStep :n="2" title="seenr users" hint="each Plex user → their seenr token">
-      <div class="space-y-2">
-        <p v-if="!store.mappings.length" class="text-sm text-muted">No users yet. Add one below.</p>
+      <p v-if="!store.mappings.length" class="text-sm text-muted">No users yet. Add one below.</p>
 
-        <!-- Stacks below sm so the Configure button never squeezes the token. -->
+      <!-- divide-muted, not divide-default: matches the Dashboard event list,
+           where the row rule is white/5 while the card outline is white/10. -->
+      <div v-else class="-mx-4 divide-y divide-muted border-y border-muted sm:-mx-6">
         <div
           v-for="m in store.mappings"
           :key="m.id"
-          class="flex flex-col gap-2 rounded-lg bg-default px-3 py-2.5 ring-1 ring-default sm:flex-row sm:items-center sm:gap-3"
+          class="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:gap-3 sm:px-6"
         >
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-2 text-sm font-medium text-highlighted">
@@ -357,17 +358,15 @@ async function runTest(dryRun: boolean) {
         </div>
       </div>
 
-      <!-- items-start (not items-end): the token field's help text below its
-           input makes that cell taller than the plain username field, so
-           bottom-aligning would misalign the inputs. Top-aligning keeps the
-           inputs level since both labels are the same height. -->
-      <div class="mt-4 grid gap-3 sm:grid-cols-[1fr_2fr_auto] sm:items-start">
+      <!-- items-end, and no help text inside the grid. Both fields are now the
+           same height, so the bare Add button lines up with the inputs on its
+           own. The invisible &nbsp; spacer div that used to shim it is gone. -->
+      <div class="mt-4 grid gap-3 sm:grid-cols-[1fr_2fr_auto] sm:items-end">
         <UFormField label="Plex username">
-          <!-- Free text still allowed, so manual entry works when Tautulli
-               is unreachable. Selecting the generated "Create …" option calls
-               preventDefault() internally (see SelectMenu.vue) and only emits
-               `create` — it does not update v-model on its own — so the typed
-               value is applied here explicitly. -->
+          <!-- Free text stays allowed so manual entry works when Tautulli is
+               unreachable. The generated "Create …" option calls preventDefault()
+               internally and only emits `create` — it does not update v-model —
+               so the typed value is applied here explicitly. -->
           <USelectMenu
             v-model="newUser"
             :items="availableUsers"
@@ -377,21 +376,16 @@ async function runTest(dryRun: boolean) {
             @create="(item) => { newUser = item }"
           />
         </UFormField>
-        <UFormField label="seenr token" help="the part after /scrobble/plex/ in your seenr URL">
+        <UFormField label="seenr token">
           <UInput v-model="newToken" placeholder="9%7CyourSeenrToken" class="w-full" />
         </UFormField>
-        <div>
-          <!-- The Add button has no label of its own, so with the row now
-               top-aligned it would sit level with the labels above, not the
-               inputs. This invisible spacer reproduces a label's height plus
-               the label-to-input gap (mirroring UFormField's own
-               labelWrapper + `mt-1` container spacing) purely to push the
-               button down to input level. See git show 2e675ca for the
-               pre-conversion React version, which used the same trick. -->
-          <div class="text-sm font-medium select-none" aria-hidden="true">&nbsp;</div>
-          <UButton label="Add" class="mt-1 min-h-11 w-full sm:w-auto" @click="addMapping" />
-        </div>
+        <UButton label="Add" icon="i-lucide-plus" class="min-h-11 w-full justify-center sm:w-auto" @click="addMapping" />
       </div>
+      <p class="mt-2 text-xs text-dimmed">
+        Token is the part after <code class="text-default">/scrobble/plex/</code> in your seenr URL.
+        Events for a user with no token yet are recorded as
+        <code class="text-default">skipped</code> and shown on the Dashboard.
+      </p>
     </SetupStep>
 
     <div class="flex items-center gap-3 pt-2">

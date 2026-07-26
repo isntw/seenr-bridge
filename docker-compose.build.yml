@@ -1,0 +1,9 @@
+services:
+  seenr-bridge:
+    build: .
+    container_name: seenr-bridge
+    restart: unless-stopped
+    ports:
+      - "8687:8687"
+    volumes:
+      - ./data:/app/data

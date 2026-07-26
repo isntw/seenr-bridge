@@ -1,0 +1,19 @@
+# Dev stack: single container, hot reload, source mounted.
+#   UI + API: http://<host>:8687
+services:
+  seenr-bridge:
+    image: node:22-bookworm-slim
+    container_name: seenr-bridge-dev
+    working_dir: /app
+    environment:
+      - DATA_DIR=/app/data
+      - PORT=8687
+    ports:
+      - "8687:8687"
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+    command: bash -lc "apt-get update -qq && apt-get install -y -qq python3 make g++ >/dev/null 2>&1; npm install && npm run dev -- --host 0.0.0.0"
+
+volumes:
+  node_modules:

@@ -1,4 +1,4 @@
-import { hashPassword, setSession } from '../../utils/auth'
+import { hashPassword, setSessionCookie } from '../../utils/auth'
 import { countUsers, createUser } from '../../utils/db'
 import type { AuthStatus } from '../../../shared/types'
 
@@ -21,6 +21,6 @@ export default defineEventHandler(async (event): Promise<AuthStatus> => {
   }
 
   const user = createUser(username, hashPassword(password))
-  setSession(event, user.id)
+  setSessionCookie(event, user.id)
   return { authenticated: true, username: user.username, needsSetup: false }
 })

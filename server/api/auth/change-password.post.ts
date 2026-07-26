@@ -1,4 +1,4 @@
-import { currentUser, hashPassword, verifyPassword, setSession } from '../../utils/auth'
+import { currentUser, hashPassword, verifyPassword, setSessionCookie } from '../../utils/auth'
 import { updateUserPassword, deleteUserSessions } from '../../utils/db'
 
 export default defineEventHandler(async (event) => {
@@ -20,6 +20,6 @@ export default defineEventHandler(async (event) => {
   updateUserPassword(user.id, hashPassword(next))
   // Sign every device out, then re-issue a session for this one.
   deleteUserSessions(user.id)
-  setSession(event, user.id)
+  setSessionCookie(event, user.id)
   return { ok: true }
 })

@@ -27,7 +27,7 @@ export function currentUser(event: H3Event): User | undefined {
   return sess ? getUserById(sess.user_id) : undefined
 }
 
-export function setSession(event: H3Event, userId: number): void {
+export function setSessionCookie(event: H3Event, userId: number): void {
   setCookie(event, SESSION_COOKIE, createSession(userId), {
     httpOnly: true,
     sameSite: 'lax',
@@ -36,7 +36,7 @@ export function setSession(event: H3Event, userId: number): void {
   })
 }
 
-export function clearSession(event: H3Event): void {
+export function clearSessionCookie(event: H3Event): void {
   deleteCookie(event, SESSION_COOKIE, { path: '/' })
 }
 

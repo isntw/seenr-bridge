@@ -1,4 +1,4 @@
-import { verifyPassword, setSession } from '../../utils/auth'
+import { verifyPassword, setSessionCookie } from '../../utils/auth'
 import { getUserByUsername } from '../../utils/db'
 import type { AuthStatus } from '../../../shared/types'
 
@@ -12,6 +12,6 @@ export default defineEventHandler(async (event): Promise<AuthStatus> => {
     throw createError({ statusCode: 401, statusMessage: 'Wrong username or password.' })
   }
 
-  setSession(event, user.id)
+  setSessionCookie(event, user.id)
   return { authenticated: true, username: user.username, needsSetup: false }
 })

@@ -1343,7 +1343,7 @@ git commit -m "feat: port enrichment pipeline with branch coverage tests"
 
 **Interfaces:**
 - Consumes: `getSessionByToken`, `getUserById`, `createSession` from `./db`.
-- Produces: `SESSION_COOKIE: string`, `hashPassword(pw: string): string`, `verifyPassword(pw: string, stored: string): boolean`, `currentUser(event: H3Event): User | undefined`, `setSession(event: H3Event, userId: number): void`, `clearSession(event: H3Event): void`, `PUBLIC_API_PATHS: Set<string>`.
+- Produces: `SESSION_COOKIE: string`, `hashPassword(pw: string): string`, `verifyPassword(pw: string, stored: string): boolean`, `currentUser(event: H3Event): User | undefined`, `setSessionCookie(event: H3Event, userId: number): void`, `clearSessionCookie(event: H3Event): void`, `PUBLIC_API_PATHS: Set<string>`.
 
 - [ ] **Step 1: Write `server/utils/auth.ts`**
 
@@ -1379,7 +1379,7 @@ export function currentUser(event: H3Event): User | undefined {
   return sess ? getUserById(sess.user_id) : undefined
 }
 
-export function setSession(event: H3Event, userId: number): void {
+export function setSessionCookie(event: H3Event, userId: number): void {
   setCookie(event, SESSION_COOKIE, createSession(userId), {
     httpOnly: true,
     sameSite: 'lax',
@@ -1388,7 +1388,7 @@ export function setSession(event: H3Event, userId: number): void {
   })
 }
 
-export function clearSession(event: H3Event): void {
+export function clearSessionCookie(event: H3Event): void {
   deleteCookie(event, SESSION_COOKIE, { path: '/' })
 }
 
@@ -1461,7 +1461,7 @@ git commit -m "feat: add auth utilities and API gate with public allowlist"
 - Reference: `legacy/server/src/auth.ts:54-100`
 
 **Interfaces:**
-- Consumes: `hashPassword`, `verifyPassword`, `currentUser`, `setSession`, `clearSession`, `SESSION_COOKIE` from `../../utils/auth`; `countUsers`, `createUser`, `getUserByUsername`, `deleteSession`, `updateUserPassword`, `deleteUserSessions` from `../../utils/db`.
+- Consumes: `hashPassword`, `verifyPassword`, `currentUser`, `setSessionCookie`, `clearSessionCookie`, `SESSION_COOKIE` from `../../utils/auth`; `countUsers`, `createUser`, `getUserByUsername`, `deleteSession`, `updateUserPassword`, `deleteUserSessions` from `../../utils/db`.
 - Produces: the five `/api/auth/*` endpoints returning `AuthStatus` or `{ ok: true }`.
 
 `change-password` sits **behind** the auth middleware, unlike the legacy version which lived outside the gate and re-checked `currentUser` itself. One auth mechanism, not two.
@@ -1486,7 +1486,7 @@ export default defineEventHandler((event): AuthStatus => {
 - [ ] **Step 2: Write `server/api/auth/register.post.ts`**
 
 ```ts
-import { hashPassword, setSession } from '../../utils/auth'
+import { hashPassword, setSessionCookie } from '../../utils/auth'
 import { countUsers, createUser } from '../../utils/db'
 import type { AuthStatus } from '../../../shared/types'
 
@@ -1509,7 +1509,7 @@ export default defineEventHandler(async (event): Promise<AuthStatus> => {
   }
 
   const user = createUser(username, hashPassword(password))
-  setSession(event, user.id)
+  setSessionCookie(event, user.id)
   return { authenticated: true, username: user.username, needsSetup: false }
 })
 ```
@@ -1517,7 +1517,7 @@ export default defineEventHandler(async (event): Promise<AuthStatus> => {
 - [ ] **Step 3: Write `server/api/auth/login.post.ts`**
 
 ```ts
-import { verifyPassword, setSession } from '../../utils/auth'
+import { verifyPassword, setSessionCookie } from '../../utils/auth'
 import { getUserByUsername } from '../../utils/db'
 import type { AuthStatus } from '../../../shared/types'
 
@@ -1531,7 +1531,7 @@ export default defineEventHandler(async (event): Promise<AuthStatus> => {
     throw createError({ statusCode: 401, statusMessage: 'Wrong username or password.' })
   }
 
-  setSession(event, user.id)
+  setSessionCookie(event, user.id)
   return { authenticated: true, username: user.username, needsSetup: false }
 })
 ```
@@ -1540,13 +1540,13 @@ export default defineEventHandler(async (event): Promise<AuthStatus> => {
 
 ```ts
 import { getCookie } from 'h3'
-import { SESSION_COOKIE, clearSession } from '../../utils/auth'
+import { SESSION_COOKIE, clearSessionCookie } from '../../utils/auth'
 import { deleteSession } from '../../utils/db'
 
 export default defineEventHandler((event) => {
   const token = getCookie(event, SESSION_COOKIE)
   if (token) deleteSession(token)
-  clearSession(event)
+  clearSessionCookie(event)
   return { ok: true }
 })
 ```
@@ -1554,7 +1554,7 @@ export default defineEventHandler((event) => {
 - [ ] **Step 5: Write `server/api/auth/change-password.post.ts`**
 
 ```ts
-import { currentUser, hashPassword, verifyPassword, setSession } from '../../utils/auth'
+import { currentUser, hashPassword, verifyPassword, setSessionCookie } from '../../utils/auth'
 import { updateUserPassword, deleteUserSessions } from '../../utils/db'
 
 export default defineEventHandler(async (event) => {
@@ -1576,7 +1576,7 @@ export default defineEventHandler(async (event) => {
   updateUserPassword(user.id, hashPassword(next))
   // Sign every device out, then re-issue a session for this one.
   deleteUserSessions(user.id)
-  setSession(event, user.id)
+  setSessionCookie(event, user.id)
   return { ok: true }
 })
 ```
@@ -1812,7 +1812,7 @@ git commit -m "feat: add settings, status, and Tautulli endpoints"
 ### Task 9: Mappings, events, stats, and image endpoints
 
 **Files:**
-- Create: `server/api/mappings/index.get.ts`, `server/api/mappings/index.post.ts`, `server/api/mappings/[id].delete.ts`, `server/api/events.get.ts`, `server/api/stats.get.ts`, `server/api/image.get.ts`
+- Create: `server/api/mappings/index.get.ts`, `server/api/mappings/index.post.ts`, `server/api/mappings/[id].delete.ts`, `server/api/events.get.ts`, `server/api/stats.get.ts`, `server/api/image.get.ts`, `server/api/[...].ts`
 - Reference: `legacy/server/src/routes.ts:101-152`
 
 **Interfaces:**
@@ -1928,6 +1928,36 @@ export default defineEventHandler(async (event) => {
   }
 })
 ```
+
+- [ ] **Step 6b: Write `server/api/[...].ts` — the API 404 catch-all**
+
+This closes a real regression against the legacy app. Express served the SPA with an explicit exclusion — `app.get('*', (req, res, next) => { if (req.path.startsWith('/api')) return next(); ... })` (`legacy/server/src/index.ts:21-24`) — so an unmatched `/api` path correctly 404'd. Nuxt in SPA mode has no such exclusion: verified empirically that an authenticated request to `/api/nope` returns **`200` with `content-type: text/html`**, i.e. the SPA shell.
+
+That is bad in two ways. A client calling a typo'd or removed endpoint gets HTML and a `200`, so `$fetch` fails with an opaque JSON-parse error instead of a clear 404. And a future endpoint registered at the wrong path appears to succeed rather than failing loudly.
+
+Nitro matches specific routes before a catch-all, so this only fires for genuinely unmatched paths:
+
+```ts
+// Unmatched /api/* must 404 as JSON, not fall through to the SPA shell.
+// Nuxt in SPA mode would otherwise serve index.html with a 200, which turns
+// a typo'd endpoint into an opaque JSON-parse error at the call site.
+export default defineEventHandler((event) => {
+  throw createError({
+    statusCode: 404,
+    statusMessage: `No API route matches ${event.path}`,
+  })
+})
+```
+
+Verify that the catch-all does **not** shadow real routes — this is the risk with catch-alls and must be checked explicitly, not assumed:
+
+```bash
+curl -s -o /dev/null -w '%{http_code} real-route-still-works\n' -b /tmp/sb.jar localhost:8687/api/stats
+curl -s -o /dev/null -w '%{http_code} unmatched-now-404\n'      -b /tmp/sb.jar localhost:8687/api/nope
+curl -s -D - -o /dev/null -b /tmp/sb.jar localhost:8687/api/nope | grep -i '^content-type'
+```
+
+Expected: `200 real-route-still-works`, `404 unmatched-now-404`, and a `content-type` of `application/json`, not `text/html`.
 
 - [ ] **Step 7: Verify mappings and events**
 

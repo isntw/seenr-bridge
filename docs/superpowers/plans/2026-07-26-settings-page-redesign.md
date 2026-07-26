@@ -820,19 +820,36 @@ Add to `<script setup>` in `app/pages/settings.vue`, next to `saveAdvanced`:
 
 ```ts
 // The switch left Advanced, so it no longer has a Save button next to it and
-// must persist on change. On failure the optimistic UI value is rolled back so
-// the switch never lies about what the server holds.
+// must persist on change. On failure the optimistic value is rolled back, so the
+// switch never lies about what the server holds.
+//
+// `forwardingBusy` is not cosmetic. Without it two overlapping toggles can both
+// fail and land the display on the wrong value: from ON, clicking OFF then ON
+// fires two requests; the first rejection restores ON, the second restores OFF,
+// and the switch ends OFF while the server still holds ON. Rolling back to a
+// captured `prev` does not fix that on its own — the second call captures the
+// already-mutated value — so the guard is what makes the rollback sound.
+const forwardingBusy = ref(false)
+
 async function toggleForwarding(v: boolean) {
+  if (forwardingBusy.value) return
+  const prev = store.settings!.forward_enabled
+  forwardingBusy.value = true
   store.settings!.forward_enabled = v
   try {
     await store.save({ forward_enabled: v })
     toast.add({ title: v ? 'Forwarding enabled.' : 'Forwarding paused.', color: 'success' })
   } catch (e) {
-    store.settings!.forward_enabled = !v
+    store.settings!.forward_enabled = prev
     toast.add({ title: apiErrorMessage(e, 'Could not change forwarding.'), color: 'error' })
+  } finally {
+    forwardingBusy.value = false
   }
 }
 ```
+
+The header's `USwitch` binds `:disabled="forwardingBusy"` so the guard is visible rather than
+silently swallowing clicks.
 
 - [ ] **Step 2: Drop `forward_enabled` from `saveAdvanced`**
 
@@ -877,6 +894,7 @@ Replace the header block (lines 199–217) with:
         <label class="flex min-h-11 items-center gap-2">
           <USwitch
             :model-value="store.settings.forward_enabled"
+            :disabled="forwardingBusy"
             @update:model-value="(v) => toggleForwarding(v === true)"
           />
           <span class="font-medium text-default">Forwarding</span>

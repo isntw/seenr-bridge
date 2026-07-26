@@ -8,3 +8,4 @@ data/*.db-*
 .output
 .data
 .playwright-mcp/
+.superpowers/

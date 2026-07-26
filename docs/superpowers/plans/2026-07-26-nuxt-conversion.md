@@ -31,6 +31,7 @@ Every task's requirements implicitly include this section.
 - **Events table capped at 1000 rows**, trimmed on every insert.
 - **Responsive:** persistent nav rail at `lg` and above; `USlideover` drawer below `lg`. Event row reflows at `sm`. Minimum 44×44px touch targets on mobile. No element may cause horizontal page scroll. Verified at 375px, 768px, and 1280px.
 - **Commit after every task.** Do not squash tasks together.
+- **Port the logic, not the warts.** Where a task says to port a legacy module, that means preserving its *behaviour* — the same branches, the same guard ordering, the same outputs — while writing the code the way it should have been written for this stack. Specifically: no `as any` or other type-checking escape hatches in application code, `node:` prefixes on Node builtins, `const`/`readonly` where values do not change, and modern idiomatic Vue/Nuxt/TypeScript throughout. Legacy stylistic quirks are not requirements. The test suites are what prove behaviour held; style is free to improve. In test files, deliberate casts used to simulate malformed input (e.g. metadata missing its `guids` array) are legitimate and should stay.
 
 ## File Structure
 
@@ -1223,7 +1224,8 @@ Expected: FAIL — cannot resolve `../server/utils/pipeline`.
 
 1. Import `IncomingEvent` and `ProcessResult` from `../../shared/types` instead of declaring them locally.
 2. Imports become explicit relative paths: `./db`, `./tautulli`, `./scrobble`, `./seenr`.
-3. Everything else is unchanged, including the `fail()` closure, the guard ordering, and the `null as any` casts in the `insertEvent` calls.
+3. The control flow is unchanged, including the `fail()` closure and the guard ordering.
+4. **Drop the legacy `null as any` casts.** The original wrote `extra.event ?? null as any`; write `extra.event ?? null`. `EventRowDb.event` is typed `string | null` and `extra.event` is `string | undefined`, so `?? null` already yields the correct type — the cast was unnecessary even in the legacy file. Same for `media_type` and `title`. No `as any` anywhere in this module.
 
 The guard ordering is load-bearing and must not be rearranged: settings check → mapping lookup → enabled check → metadata fetch → build → `dryRun` early return → `forward_enabled` → per-media-type sync flags → forward. Tests assert on this order via which mocks were called.
 

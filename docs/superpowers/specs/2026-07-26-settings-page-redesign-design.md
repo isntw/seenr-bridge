@@ -64,9 +64,14 @@ Setup                        [Forwarding ●] ● connected · 2 users · webhoo
 └─────────────────────────────────────────────────────────────┘
 
 ──────────────────────────── MORE ────────────────────────────
-› Advanced                     forwarding · seenr URL · bridge URL
+› Advanced                                seenr URL · bridge URL
 › Test a scrobble              run one item through the pipeline
 ```
+
+The diagram's header line shows the forwarding switch, and Advanced's summary therefore omits
+"forwarding" — the switch is promoted out of Advanced (see *Global forwarding switch* below), so it
+must not appear in both places. An earlier draft of this diagram listed it in Advanced's summary,
+contradicting that section.
 
 ### Card titles and hints
 
@@ -315,12 +320,18 @@ and that stays. Additions:
 There is no linter in this repo — `npm run typecheck` is the only static check and Vitest is the only
 runner.
 
-- `npm test` — the 38 existing tests must stay green. This redesign touches no `server/utils` logic
-  that they cover except adding one new function to `tautulli.ts`.
-- **No unit test for `getChildren`.** `tautulli.ts` has no test coverage today because every function
-  in it makes a live network call, and this design does not introduce a mocking layer to change that.
-  Stated plainly rather than implied: the picker's correctness rests on manual verification against a
-  real Tautulli.
+- `npm test` — the **49** existing tests must stay green. This redesign touches no `server/utils`
+  logic that they cover except adding one new function to `tautulli.ts`. (An earlier draft said 38,
+  copied from a stale line in `CLAUDE.md`; the measured baseline was 49 across 4 files. Both
+  documents are now corrected. Final total: **55 across 5 files**.)
+- **`getChildren` IS unit-tested — this reverses the draft's decision.** The draft said `tautulli.ts`
+  would stay uncovered because every function in it makes a live network call, and that no mocking
+  layer would be introduced. That was too pessimistic: `tests/pipeline.spec.ts` already establishes
+  mocking in this suite, and the `get_children_metadata` response shape was this design's single
+  flagged unverified assumption — precisely the thing a fixture test should pin. `tests/tautulli.spec.ts`
+  stubs `global.fetch` via `vi.stubGlobal` and covers the envelope, string coercion, an absent
+  `children_list`, row filtering, error propagation, and the outbound request. It makes no network
+  calls. The shape was *also* confirmed against a live Tautulli during implementation.
 - `npm run typecheck` — must be clean, and watch for `WARN Duplicated imports`.
 - **Grep `.nuxt/components.d.ts` for every component used for the first time**, `UFieldGroup`
   especially. A misspelled Nuxt UI component name passes both `typecheck` and `build`, then renders

@@ -25,7 +25,7 @@ npm run dev         # nuxt dev, single process, http://localhost:8687
 npm run build        # nuxt build → .output/ (bundled Nitro server + static client)
 npm run preview       # preview the .output/ build
 npm start            # node .output/server/index.mjs — runs a prior build
-npm test              # vitest run — tests/**/*.spec.ts, 38 tests across 4 files
+npm test              # vitest run — tests/**/*.spec.ts, 55 tests across 5 files
 npm run test:watch     # vitest, watch mode
 npm run typecheck       # nuxt typecheck (app/ + server/ + shared/) && typecheck:tests (tests/ + vitest.config.ts)
 npm run typecheck:tests  # vue-tsc -p tsconfig.test.json alone — tests/ isn't in nuxt's own generated tsconfig
@@ -39,11 +39,11 @@ This is a single Nuxt 4 application (SPA mode, no SSR — it's a login-gated LAN
 
 - **`app/`** — the Nuxt `srcDir`. Pages (`app/pages/`), layouts (`app/layouts/`), components (`app/components/`), and three Pinia stores (`app/stores/auth.ts`, `settings.ts`, `status.ts`). `app/middleware/auth.global.ts` is the client-side route guard — it redirects to `/login` when unauthenticated and away from `/login` once a session exists. `app/app.config.ts` carries the violet/slate Nuxt UI theme, forced dark.
 - **`server/api/`** — Nitro request handlers, one file (or one file per HTTP method) per route, e.g. `server/api/settings/index.get.ts`, `server/api/webhook/tautulli.post.ts`. These use Nitro's ambient auto-imports (`defineEventHandler`, `createError`, `getQuery`, etc. are global, not imported) — that's the Nitro convention and is deliberate here. `server/api/[...].ts` is the catch-all for unmatched `/api/*` paths.
-- **`server/utils/`** — the domain logic, framework-agnostic: `db.ts` (schema, migrations, all queries, the `*ToWire()` boundary), `auth.ts` (password hashing, session cookies, the public-path allowlist), `tautulli.ts` (the Tautulli API client — `get_metadata`, `get_notifiers`/`add_notifier_config`/`set_notifier_config`, `get_users`, image proxying), `scrobble.ts` (maps a Tautulli action to a Plex event name and shapes the `media.scrobble` payload), `seenr.ts` (posts the payload to a user's seenr token), `pipeline.ts` (`processEvent()` — the one function that does the real work: settings check → mapping lookup → Tautulli metadata → build payload → per-mapping media-type gate → forward → record event row).
+- **`server/utils/`** — the domain logic, framework-agnostic: `db.ts` (schema, migrations, all queries, the `*ToWire()` boundary), `auth.ts` (password hashing, session cookies, the public-path allowlist), `tautulli.ts` (the Tautulli API client — `get_metadata`, `get_notifiers`/`add_notifier_config`/`set_notifier_config`, `get_users`, `get_libraries`/`get_library_media_info`, `get_children_metadata` via `getChildren()` for the show → season → episode drill-down, `get_history`, image proxying), `scrobble.ts` (maps a Tautulli action to a Plex event name and shapes the `media.scrobble` payload), `seenr.ts` (posts the payload to a user's seenr token), `pipeline.ts` (`processEvent()` — the one function that does the real work: settings check → mapping lookup → Tautulli metadata → build payload → per-mapping media-type gate → forward → record event row).
 - **`server/middleware/auth.ts`** — the Nitro request middleware. Thin by design: it just calls `requiresAuth()` and `currentUser()` from `server/utils/auth.ts`.
 - **`shared/types/index.ts`** — the wire contract (`Settings`, `Mapping`, `ScrobbleEvent`, `Stats`, `Status`, `AuthStatus`, etc.), imported by both `app/` and `server/`. Booleans here are real `boolean`s — the `0`/`1` SQLite representation never crosses this boundary directly.
 - **`shared/version.ts`** — the single source of truth for the app version.
-- **`tests/`** — `db.spec.ts`, `scrobble.spec.ts`, `pipeline.spec.ts`, `auth.spec.ts` (four files). Plain Vitest, not Nuxt's test utils — see the import rule below.
+- **`tests/`** — `db.spec.ts`, `scrobble.spec.ts`, `pipeline.spec.ts`, `auth.spec.ts`, `tautulli.spec.ts` (five files). Plain Vitest, not Nuxt's test utils — see the import rule below. `tautulli.spec.ts` is the only one that stubs `global.fetch` (via `vi.stubGlobal`); it covers `getChildren`'s parsing of Tautulli's `get_children_metadata` envelope and makes no network calls.
 
 ## Conventions that still bite you
 

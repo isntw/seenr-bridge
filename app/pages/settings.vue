@@ -360,7 +360,8 @@ async function runTest(dryRun: boolean) {
 
       <!-- items-end, and no help text inside the grid. Both fields are now the
            same height, so the bare Add button lines up with the inputs on its
-           own. The invisible &nbsp; spacer div that used to shim it is gone. -->
+           own. The invisible non-breaking-space spacer div that used to shim it
+           is gone, and nothing replaced it. -->
       <div class="mt-4 grid gap-3 sm:grid-cols-[1fr_2fr_auto] sm:items-end">
         <UFormField label="Plex username">
           <!-- Free text stays allowed so manual entry works when Tautulli is
@@ -383,8 +384,8 @@ async function runTest(dryRun: boolean) {
       </div>
       <p class="mt-2 text-xs text-dimmed">
         Token is the part after <code class="text-default">/scrobble/plex/</code> in your seenr URL.
-        Events for a user with no token yet are recorded as
-        <code class="text-default">skipped</code> and shown on the Dashboard.
+        Playback by anyone not mapped here is ignored — nothing is forwarded and no event is
+        recorded, so it won't show on the Dashboard either.
       </p>
     </SetupStep>
 

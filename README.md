@@ -12,12 +12,26 @@ seenr identifies an episode by its **own** TMDb/TVDb/IMDB id. But Tautulli's web
 
 Plex's own webhooks carry the right episode ids, but only fire for the **server owner** — not shared users. Tautulli sees everyone's playback, so the bridge keeps Tautulli as the source and supplies the missing piece: it re-looks-up each item's real ids by `rating_key`, rebuilds a proper Plex `media.scrobble` payload, and forwards it to the right user's seenr token. Matching is ID-based and title-independent, for episodes and movies alike.
 
+```mermaid
+flowchart LR
+    Plex["🎬 Plex<br/>someone presses play"]
+    Tautulli["📊 Tautulli<br/>sees every user's playback"]
+    Bridge["🌉 Seenr Bridge"]
+    Seenr["✅ seenr.app<br/>that user's account"]
+
+    Plex --> Tautulli
+    Tautulli -- "webhook<br/>rating_key · username · action" --> Bridge
+    Bridge -. "1 · get_metadata(rating_key)" .-> Tautulli
+    Tautulli -. "2 · the item's OWN tmdb/tvdb/imdb ids" .-> Bridge
+    Bridge == "3 · POST media.scrobble<br/>to that user's token" ==> Seenr
+
+    style Bridge stroke:#8b5cf6,stroke-width:2px
+    style Seenr stroke:#34d399,stroke-width:2px
 ```
-Plex ──play──▶ Tautulli ──webhook {rating_key, user, action}──▶ Seenr Bridge
-                                                                    │  get_metadata(rating_key) → real ids
-                                                                    ▼
-                                              POST payload=<plex media.scrobble> ──▶ seenr.app/.../<user token>
-```
+
+The dotted pair is the part that matters: the bridge asks Tautulli about the item
+it was just told about, because the webhook alone can't say which *episode* was
+watched — only which show.
 
 ## Features
 

@@ -282,10 +282,10 @@ async function toggleForwarding(v: boolean) {
   store.settings!.forward_enabled = v
   try {
     await store.setForwarding(v)
-    toast.add({ title: v ? 'Forwarding enabled.' : 'Forwarding paused.', color: 'success' })
+    toast.add({ title: v ? 'Syncing enabled.' : 'Syncing paused — nothing reaches seenr or Plex.', color: 'success' })
   } catch (e) {
     store.settings!.forward_enabled = prev
-    toast.add({ title: apiErrorMessage(e, 'Could not change forwarding.'), color: 'error' })
+    toast.add({ title: apiErrorMessage(e, 'Could not change syncing.'), color: 'error' })
   } finally {
     forwardingBusy.value = false
   }
@@ -428,10 +428,15 @@ async function runTest(dryRun: boolean) {
             {{ hookStatus === 'pending' ? 'checking…' : hookStatus === 'ok' ? 'webhook active' : 'no webhook' }}
           </span>
         </span>
+        <!-- "Syncing", not "Forwarding": this is the master switch and it gates the Plex
+             writes as well, so naming it after one of the two destinations understated
+             it. The column stays `forward_enabled` — renaming it would be a migration
+             for no behavioural gain. -->
         <USwitch
-          label="Forwarding"
+          label="Syncing"
           :model-value="store.settings.forward_enabled"
           :disabled="forwardingBusy"
+          :title="store.settings.forward_enabled ? 'Nothing is sent to seenr or Plex while this is off' : 'Off — nothing is sent to seenr or Plex'"
           @update:model-value="(v) => toggleForwarding(v === true)"
         />
       </div>

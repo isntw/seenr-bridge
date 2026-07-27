@@ -138,7 +138,7 @@ describe('processEvent guards', () => {
     const r = await pipeline.processEvent(input)
 
     expect(r.ok).toBe(false)
-    expect(r.reason).toBe('Forwarding is disabled in settings')
+    expect(r.reason).toBe('Syncing is disabled in settings')
     expect(forwardToSeenr).not.toHaveBeenCalled()
     expect(db.listEvents(10)).toHaveLength(1)
   })
@@ -347,7 +347,7 @@ describe('backfillSharedTitle', () => {
     const r = await pipeline.backfillSharedTitle('500')
 
     expect(r.ok).toBe(false)
-    expect(r.reason).toBe('Forwarding is disabled in settings')
+    expect(r.reason).toBe('Syncing is disabled in settings')
     expect(forwardToSeenr).not.toHaveBeenCalled()
   })
 })

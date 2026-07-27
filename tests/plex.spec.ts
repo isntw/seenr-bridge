@@ -284,4 +284,16 @@ describe('resolvePlexToken', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(4)
   })
+
+  // The guard on `tokenCache.owner` being non-empty: if plex.tv returns no username,
+  // nobody may match "the owner", least of all a user whose name is also empty.
+  // Without the guard this hands out the owner's token and marks the WRONG copy watched.
+  it('never treats anyone as the owner when plex.tv reports no username', async () => {
+    plexTvReplies('')
+
+    await expect(resolvePlexToken('', '', 'm', 'owner-tok')).resolves.toBeNull()
+    await expect(resolvePlexToken('nobody', '', 'm', 'owner-tok')).resolves.toBeNull()
+    // A genuinely shared user still resolves normally — the guard must not break discovery.
+    await expect(resolvePlexToken('ana', '', 'm', 'owner-tok')).resolves.toBe('ana-tok')
+  })
 })

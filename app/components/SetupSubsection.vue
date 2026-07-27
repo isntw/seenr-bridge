@@ -49,24 +49,30 @@ defineProps<{
           size="sm"
           :class="open ? 'mb-3' : ''"
         >
-          <UIcon
-            name="i-lucide-chevron-right"
-            class="size-3.5 shrink-0 text-muted transition-transform"
-            :class="open ? 'rotate-90' : ''"
-          />
-          <h3 class="text-xs font-semibold uppercase tracking-wider text-muted">{{ label }}</h3>
-          <UBadge
-            v-if="status && statusText"
-            :color="status === 'ok' ? 'success' : status === 'bad' ? 'error' : 'neutral'"
-            variant="subtle"
-            size="sm"
-            :label="statusText"
-          />
-          <!-- min-w-0 is what makes `truncate` work inside a flex row; without it a
-               flex item refuses to shrink below its content and overflows instead.
-               A class on my own span, not an override of UButton. -->
-          <span v-if="!open && summary" class="ml-auto min-w-0 truncate pl-2 text-xs text-dimmed">
-            {{ summary }}
+          <!-- ONE flex-1 child, not four loose ones. `block` brings justify-center,
+               which is harmless only while something grows — and the summary below is
+               v-if="!open", so on opening the last growing child vanished and the
+               header snapped to the middle. Wrapping makes the row itself the child
+               that absorbs the space, in both states. -->
+          <span class="flex min-w-0 flex-1 items-center gap-2 text-left">
+            <UIcon
+              name="i-lucide-chevron-right"
+              class="size-3.5 shrink-0 text-muted transition-transform"
+              :class="open ? 'rotate-90' : ''"
+            />
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-muted">{{ label }}</h3>
+            <UBadge
+              v-if="status && statusText"
+              :color="status === 'ok' ? 'success' : status === 'bad' ? 'error' : 'neutral'"
+              variant="subtle"
+              size="sm"
+              :label="statusText"
+            />
+            <!-- min-w-0 is what makes `truncate` work inside a flex row; without it a
+                 flex item refuses to shrink below its content and overflows instead. -->
+            <span v-if="!open && summary" class="ml-auto min-w-0 truncate pl-2 text-xs text-dimmed">
+              {{ summary }}
+            </span>
           </span>
         </UButton>
       </template>

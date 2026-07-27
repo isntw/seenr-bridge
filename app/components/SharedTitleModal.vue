@@ -295,7 +295,9 @@ function submit() {
                     class="h-9 w-6 shrink-0 rounded-sm object-cover ring-1 ring-default"
                   >
                   <div v-else class="h-9 w-6 shrink-0 rounded-sm bg-elevated ring-1 ring-default" />
-                  <span class="min-w-0 flex-1">
+                  <!-- text-left for the same reason as the list rows: the UA
+                       stylesheet centres text inside a <button>. -->
+                  <span class="min-w-0 flex-1 text-left">
                     <span class="block truncate text-sm text-default">{{ i.title }}</span>
                     <span v-if="i.library_name" class="block truncate text-xs text-dimmed">
                       {{ i.library_name }}

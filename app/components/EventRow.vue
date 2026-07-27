@@ -94,7 +94,11 @@ function recipientStatus(r: EventRecipient) {
       >
       <div v-else class="h-[72px] w-12 shrink-0 rounded-md bg-elevated ring-1 ring-default" />
 
-      <div class="min-w-0 flex-1">
+      <!-- text-left because a native <button> is text-align:center per the UA
+           stylesheet and UButton does not reset it, so these block children would
+           centre themselves. flex-1 also gives `block`'s justify-center nothing to
+           do. Both are classes on my content, not overrides of the component. -->
+      <div class="min-w-0 flex-1 text-left">
         <div class="flex flex-wrap items-center gap-2">
           <h3 class="min-w-0 truncate text-sm font-medium text-highlighted">{{ derived.main }}</h3>
           <UBadge

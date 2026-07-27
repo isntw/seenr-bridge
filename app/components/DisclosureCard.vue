@@ -14,13 +14,20 @@ defineProps<{ title: string; summary?: string }>()
       <!-- Props only, matching the other two collapsible triggers. `block` supplies
            w-full; the padding and gap are the component's. -->
       <UButton block color="neutral" variant="ghost" size="xl">
-        <UIcon
-          name="i-lucide-chevron-right"
-          class="size-4 shrink-0 text-muted transition-transform"
-          :class="open ? 'rotate-90' : ''"
-        />
-        <span class="text-sm font-semibold text-highlighted">{{ title }}</span>
-        <span v-if="summary" class="ml-auto hidden text-xs text-dimmed sm:block">{{ summary }}</span>
+        <!-- One flex-1 child, so `block`'s justify-center always has something to
+             absorb the space. The summary alone cannot: it is sm:block, so on a
+             phone — or on any card with no summary — the header would centre. -->
+        <span class="flex min-w-0 flex-1 items-center gap-2 text-left">
+          <UIcon
+            name="i-lucide-chevron-right"
+            class="size-4 shrink-0 text-muted transition-transform"
+            :class="open ? 'rotate-90' : ''"
+          />
+          <span class="text-sm font-semibold text-highlighted">{{ title }}</span>
+          <span v-if="summary" class="ml-auto hidden min-w-0 truncate text-xs text-dimmed sm:block">
+            {{ summary }}
+          </span>
+        </span>
       </UButton>
       <template #content>
         <div class="space-y-4 border-t border-default p-5">

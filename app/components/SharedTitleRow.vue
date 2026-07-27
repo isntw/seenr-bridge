@@ -44,7 +44,10 @@ function assigned(mappings: Mapping[], profiles: number[]) {
     >
     <div v-else class="h-[72px] w-12 shrink-0 rounded-md bg-elevated ring-1 ring-default" />
 
-    <div class="min-w-0 flex-1">
+    <!-- text-left: a native <button> centres its text per the UA stylesheet and
+         UButton does not reset it. flex-1 leaves `block`'s justify-center nothing
+         to do. Classes on my content, not on the component. -->
+    <div class="min-w-0 flex-1 text-left">
       <div class="flex flex-wrap items-center gap-2">
         <span class="min-w-0 truncate text-sm font-medium text-highlighted">{{ row.title }}</span>
         <span v-if="row.year" class="text-xs text-dimmed">{{ row.year }}</span>

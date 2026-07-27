@@ -164,6 +164,14 @@ export interface SharedTitle {
   profiles: number[] // mapping ids
 }
 
+/** Whether a Plex account is linked, and which mapped users have a usable token. */
+export interface PlexLinkStatus {
+  connected: boolean
+  matched: string[]
+  unmatched: string[]
+  error?: string
+}
+
 export interface BackfillResult {
   ok: boolean
   reason?: string

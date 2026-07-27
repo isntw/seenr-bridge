@@ -23,6 +23,7 @@ function validate(raw: unknown): Partial<SettingsRow> {
     sync_movies: bool(b.sync_movies),
     sync_episodes: bool(b.sync_episodes),
     libraries,
+    plex_token: str(b.plex_token),
   }
 }
 

@@ -1,47 +1,13 @@
 <script setup lang="ts">
-import type { BackfillResult, LibraryItem, Mapping, SharedTitle } from '../../shared/types'
+import type { BackfillResult, Mapping, SharedTitle } from '../../shared/types'
+import type { SharedRow, SharedTitlePayload } from '../utils/shared-row'
 import { apiErrorMessage } from '../../shared/errors'
 
-// /api/tautulli/library answers with ok:false (+ error) instead of throwing, so a
-// Tautulli problem can be shown inline while the rest of the page keeps working.
-// It's an endpoint-local envelope, not part of the shared wire contract.
-interface LibraryPage {
-  ok: boolean
-  items: LibraryItem[]
-  total: number
-  error?: string
-}
-
-type MediaType = 'show' | 'movie'
-
-interface BackfillMessage {
-  ok: boolean
-  msg: string
-}
-
-// One view-ready row, so the template never has to index the lookup maps
-// (noUncheckedIndexedAccess makes that awkward) or rebuild poster URLs inline.
-interface Row {
-  rating_key: string
-  media_type: string
-  title: string | null
-  year: string | null
-  image: string | null
-  poster: string | null
-  isShow: boolean
-  profiles: number[]
-  isShared: boolean
-  result: BackfillMessage | null
-  onlyNew: boolean
-}
-
-const PAGE_SIZE = 50
-
-const MEDIA_TYPES: { value: MediaType; label: string }[] = [
-  { value: 'show', label: 'TV Shows' },
-  { value: 'movie', label: 'Movies' },
-]
-
+// This page lists only the titles that are actually co-watched. Browsing the
+// library moved into the add modal, which matters for more than tidiness:
+// /api/shared already carries each shared title's name, year and art, so the page
+// renders with no Tautulli call at all. It used to fetch the whole library on load
+// just to surface the handful of shared entries inside it.
 const { data: shared, refresh: refreshShared } = await useAsyncData<SharedTitle[]>(
   'shared',
   () => $fetch('/api/shared'),
@@ -54,126 +20,41 @@ const { data: mappings } = await useAsyncData<Mapping[]>(
   { default: (): Mapping[] => [] },
 )
 
-const type = ref<MediaType>('show')
-const search = ref('')
-const query = ref('') // the applied search — only changes on submit
-const items = ref<LibraryItem[]>([])
-const total = ref(0)
-const loading = ref(false)
-const libError = ref<string | null>(null)
-const sharedOnly = ref(false)
+const toast = useToast()
 
-// Only one backfill runs at a time, so a single key is enough to track it.
-const busyKey = ref<string | null>(null)
-const results = ref(new Map<string, BackfillMessage>())
-// Shows where "Only new ones" was picked. Per-title, client-side, not persisted.
-const onlyNew = ref(new Set<string>())
+// One modal component in two modes. `editing` doubles as the mode switch: null
+// means add.
+const modalOpen = ref(false)
+const editing = ref<SharedRow | null>(null)
+const busy = ref(false)
 
-const sharedMap = computed(() => {
-  const m = new Map<string, number[]>()
-  for (const s of shared.value) m.set(s.rating_key, s.profiles)
-  return m
-})
+const mode = computed<'add' | 'edit'>(() => (editing.value ? 'edit' : 'add'))
+const sharedKeys = computed(() => shared.value.map((s) => s.rating_key))
 
-async function load(start: number) {
-  loading.value = true
-  libError.value = null
-  try {
-    const r = await $fetch<LibraryPage>('/api/tautulli/library', {
-      query: { type: type.value, search: query.value, start, length: PAGE_SIZE },
-    })
-    if (!r.ok) libError.value = r.error || 'Could not load library from Tautulli.'
-    items.value = start === 0 ? r.items : [...items.value, ...r.items]
-    total.value = r.total
-  } catch (e) {
-    libError.value = apiErrorMessage(e, 'Could not load library from Tautulli.')
-  } finally {
-    loading.value = false
-  }
+const rows = computed<SharedRow[]>(() =>
+  [...shared.value]
+    .sort((a, b) => (a.title || '').localeCompare(b.title || ''))
+    .map((s) => ({
+      rating_key: s.rating_key,
+      media_type: s.media_type,
+      title: s.title,
+      year: s.year,
+      image: s.image,
+      poster: s.image ? `/api/image?path=${encodeURIComponent(s.image)}` : null,
+      isShow: s.media_type === 'show',
+      profiles: s.profiles,
+      isShared: s.profiles.length > 0,
+    })),
+)
+
+function openAdd() {
+  editing.value = null
+  modalOpen.value = true
 }
 
-// (Re)load the library when the type or the applied search changes, and when
-// leaving the shared-only view. Shared-only reads from the stored titles instead.
-watch([type, query, sharedOnly], () => {
-  if (sharedOnly.value) return
-  void load(0)
-}, { immediate: true })
-
-function applySearch() {
-  query.value = search.value.trim()
-}
-
-const rows = computed<Row[]>(() => {
-  const base = sharedOnly.value
-    ? shared.value.map((s) => ({
-        rating_key: s.rating_key,
-        media_type: s.media_type,
-        title: s.title,
-        year: s.year,
-        image: s.image,
-      }))
-    : items.value.map((i) => ({
-        rating_key: i.rating_key,
-        media_type: i.media_type,
-        title: i.title,
-        year: i.year,
-        image: i.image,
-      }))
-
-  return base.map((r) => {
-    const profiles = sharedMap.value.get(r.rating_key) ?? []
-    return {
-      ...r,
-      poster: r.image ? `/api/image?path=${encodeURIComponent(r.image)}` : null,
-      isShow: r.media_type === 'show',
-      profiles,
-      isShared: profiles.length > 0,
-      result: results.value.get(r.rating_key) ?? null,
-      onlyNew: onlyNew.value.has(r.rating_key),
-    }
-  })
-})
-
-function initials(name: string) {
-  return name.slice(0, 2).toUpperCase()
-}
-
-// Optimistic: the chip flips immediately, the PUT follows. A failed PUT re-reads
-// /api/shared so the UI can't stay out of step with the database.
-async function toggleProfile(row: Row, mappingId: number) {
-  const next = row.profiles.includes(mappingId)
-    ? row.profiles.filter((id) => id !== mappingId)
-    : [...row.profiles, mappingId]
-
-  const existing = shared.value.find((s) => s.rating_key === row.rating_key)
-  const others = shared.value.filter((s) => s.rating_key !== row.rating_key)
-  // No profiles left means the title is no longer shared at all.
-  shared.value = next.length === 0
-    ? others
-    : [...others, {
-        rating_key: row.rating_key,
-        media_type: row.media_type,
-        title: row.title ?? existing?.title ?? null,
-        year: row.year ?? existing?.year ?? null,
-        image: row.image ?? existing?.image ?? null,
-        profiles: next,
-      }]
-
-  try {
-    await $fetch<{ ok: boolean; profiles: number[] }>('/api/shared', {
-      method: 'PUT',
-      body: {
-        rating_key: row.rating_key,
-        media_type: row.media_type,
-        title: row.title ?? undefined,
-        year: row.year ?? undefined,
-        image: row.image ?? undefined,
-        profiles: next,
-      },
-    })
-  } catch {
-    await refreshShared()
-  }
+function openEdit(row: SharedRow) {
+  editing.value = row
+  modalOpen.value = true
 }
 
 function plural(n: number, word: string) {
@@ -189,221 +70,142 @@ function backfillMessage(r: BackfillResult) {
   return `${plural(r.items, 'episode')} → ${plural(r.profiles, 'profile')} · ${r.ok_count} ok${failed}`
 }
 
-async function backfill(ratingKey: string) {
-  busyKey.value = ratingKey
-  results.value.delete(ratingKey)
+// Both add and edit land here: the modal hands back a complete row, so there is a
+// single write path and no branching on mode.
+async function saveTitle(p: SharedTitlePayload) {
+  const wasEdit = mode.value === 'edit'
+  busy.value = true
   try {
-    const r = await $fetch<BackfillResult>(
-      `/api/shared/${encodeURIComponent(ratingKey)}/backfill`,
-      { method: 'POST' },
-    )
-    results.value.set(ratingKey, { ok: r.ok, msg: backfillMessage(r) })
+    await $fetch('/api/shared', {
+      method: 'PUT',
+      body: {
+        rating_key: p.rating_key,
+        media_type: p.media_type,
+        title: p.title ?? undefined,
+        year: p.year ?? undefined,
+        image: p.image ?? undefined,
+        profiles: p.profiles,
+      },
+    })
   } catch (e) {
-    results.value.set(ratingKey, { ok: false, msg: apiErrorMessage(e, 'Sync failed.') })
-  } finally {
-    busyKey.value = null
+    toast.add({ title: apiErrorMessage(e, 'Could not save that title.'), color: 'error' })
+    busy.value = false
+    return
   }
+
+  // The share has landed. Backfill runs second because it reads the assignment
+  // back out of the database, and it is best-effort from here on: a failure must
+  // not make it look as though nothing was saved.
+  if (p.syncPrevious) {
+    try {
+      const r = await $fetch<BackfillResult>(
+        `/api/shared/${encodeURIComponent(p.rating_key)}/backfill`,
+        { method: 'POST' },
+      )
+      toast.add({
+        title: `${p.title}: ${backfillMessage(r)}`,
+        color: r.ok ? 'success' : 'warning',
+      })
+    } catch (e) {
+      toast.add({
+        title: `${p.title} was saved, but syncing previous watches failed: ${apiErrorMessage(e, 'unknown error')}`,
+        color: 'warning',
+      })
+    }
+  } else {
+    toast.add({
+      title: wasEdit ? `${p.title} updated.` : `${p.title} is now shared.`,
+      color: 'success',
+    })
+  }
+
+  await refreshShared()
+  modalOpen.value = false
+  editing.value = null
+  busy.value = false
 }
 
-function setOnlyNew(ratingKey: string, value: boolean) {
-  if (value) onlyNew.value.add(ratingKey)
-  else onlyNew.value.delete(ratingKey)
+// Unassigning every profile is what "not shared" means server-side, so removal is
+// a PUT with an empty list rather than its own endpoint.
+async function removeTitle(ratingKey: string) {
+  const row = shared.value.find((s) => s.rating_key === ratingKey)
+  busy.value = true
+  try {
+    await $fetch('/api/shared', {
+      method: 'PUT',
+      body: { rating_key: ratingKey, media_type: row?.media_type ?? 'show', profiles: [] },
+    })
+    toast.add({ title: `${row?.title ?? 'Title'} is no longer shared.`, color: 'success' })
+    await refreshShared()
+    modalOpen.value = false
+    editing.value = null
+  } catch (e) {
+    toast.add({ title: apiErrorMessage(e, 'Could not remove that title.'), color: 'error' })
+  } finally {
+    busy.value = false
+  }
 }
 </script>
 
 <template>
-  <div class="space-y-4">
-    <div class="flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <h2 class="text-lg font-semibold text-highlighted">Shared / co-watched</h2>
-        <p class="mt-0.5 text-sm text-muted">
-          Pick titles you watch together. A watch from any assigned profile scrobbles to all of them.
-        </p>
-      </div>
-      <UBadge
-        v-if="mappings.length > 0 && shared.length > 0"
-        color="primary"
-        variant="subtle"
-        :label="`${shared.length} shared`"
-      />
+  <div class="space-y-6">
+    <div>
+      <h2 class="text-lg font-semibold text-highlighted">Shared / co-watched</h2>
+      <p class="mt-0.5 text-sm text-muted">
+        Titles you watch together. A watch from any assigned profile scrobbles to all of them.
+      </p>
     </div>
 
     <!-- Co-watching shares a watch between profiles, so it needs profiles first. -->
     <UCard v-if="!mappings.length" :ui="{ body: 'px-5 py-8 sm:px-5 sm:py-8' }">
       <p class="text-center text-sm text-muted">
         Add at least one user under
-        <ULink to="/settings" class="text-default">Settings → Map users</ULink>
+        <ULink to="/settings" class="text-default">Settings → seenr users</ULink>
         first. Co-watching needs profiles to share to.
       </p>
     </UCard>
 
-    <template v-else>
-      <div class="flex flex-wrap items-center gap-3">
-        <!-- UFieldGroup is v4's renamed UButtonGroup — it joins the two buttons
-             into one segmented control. Note that an unknown component name here
-             typechecks fine and simply renders nothing, so it has to be verified
-             against .nuxt/components.d.ts rather than trusted. -->
-        <UFieldGroup>
-          <UButton
-            v-for="t in MEDIA_TYPES"
-            :key="t.value"
-            :color="type === t.value ? 'primary' : 'neutral'"
-            :variant="type === t.value ? 'solid' : 'outline'"
-            :label="t.label"
-            :disabled="sharedOnly"
-            @click="type = t.value"
-          />
-        </UFieldGroup>
+    <!-- One card with a divided list, matching the Dashboard's Recent scrobbles. -->
+    <UCard v-else :ui="{ body: 'p-0 sm:p-0' }">
+      <template #header>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 class="text-sm font-semibold tracking-wide text-highlighted">Shared titles</h3>
+            <p class="mt-0.5 text-xs text-muted">
+              {{ plural(shared.length, 'title') }} · {{ plural(mappings.length, 'profile') }}
+            </p>
+          </div>
+          <UButton icon="i-lucide-plus" label="Add title" @click="openAdd" />
+        </div>
+      </template>
 
-        <form v-if="!sharedOnly" class="flex flex-1 items-center gap-2" @submit.prevent="applySearch">
-          <UInput
-            v-model="search"
-            :placeholder="`Search ${type === 'show' ? 'shows' : 'movies'}…`"
-            class="min-w-0 flex-1"
-          />
-          <UButton type="submit" color="neutral" variant="subtle" label="Search" />
-        </form>
-
-        <!-- UCheckbox emits 'indeterminate' as well as booleans, so v-model on a
-             plain boolean ref doesn't typecheck — same reason settings.vue takes
-             the update event instead. -->
-        <UCheckbox
-          :model-value="sharedOnly"
-          label="Shared only"
-          class="ml-auto items-center"
-          @update:model-value="(v) => { sharedOnly = v === true }"
-        />
+      <div v-if="!rows.length" class="px-4 py-12 text-center text-sm text-muted">
+        Nothing shared yet. Use <strong class="text-default">Add title</strong> to pick something you
+        watch together.
       </div>
 
-      <UAlert
-        v-if="libError && !sharedOnly"
-        color="error"
-        variant="subtle"
-        :description="libError"
-      />
-
-      <div class="space-y-2">
-        <UCard v-if="!rows.length && !loading" :ui="{ body: 'px-5 py-8 sm:px-5 sm:py-8' }">
-          <p class="text-center text-sm text-muted">
-            {{ sharedOnly
-              ? 'Nothing shared yet. Turn off “Shared only” and pick titles to co-watch.'
-              : 'No titles found.' }}
-          </p>
-        </UCard>
-
-        <!-- Rows are `outline`, not the app-wide `subtle` default: the old row
-             was bg-black/20 with a white/10 border, i.e. recessed to page level
-             rather than raised like a card. Tinted violet once shared. -->
-        <UCard
+      <!-- divide-muted, not divide-default: the row rule is white/5 while the card
+           outline is white/10, as on the Dashboard. -->
+      <div v-else class="divide-y divide-muted">
+        <SharedTitleRow
           v-for="row in rows"
           :key="row.rating_key"
-          variant="outline"
-          :ui="{ root: 'rounded-xl', body: 'p-3 sm:p-3' }"
-          :class="row.isShared ? 'bg-primary-500/[0.06] ring-primary-500/30' : ''"
-        >
-          <div class="flex gap-3">
-            <img
-              v-if="row.poster"
-              :src="row.poster"
-              alt=""
-              loading="lazy"
-              class="h-[72px] w-12 shrink-0 rounded-md object-cover ring-1 ring-default"
-            >
-            <div v-else class="h-[72px] w-12 shrink-0 rounded-md bg-elevated ring-1 ring-default" />
-
-            <div class="min-w-0 flex-1">
-              <div class="flex flex-wrap items-center gap-2">
-                <span class="min-w-0 truncate text-sm font-medium text-highlighted">{{ row.title }}</span>
-                <span v-if="row.year" class="text-xs text-dimmed">{{ row.year }}</span>
-                <UBadge
-                  :color="row.isShow ? 'primary' : 'info'"
-                  variant="subtle"
-                  size="sm"
-                  :label="row.isShow ? 'show' : 'movie'"
-                />
-              </div>
-
-              <div class="mt-2 flex flex-wrap gap-1.5">
-                <UButton
-                  v-for="m in mappings"
-                  :key="m.id"
-                  :color="row.profiles.includes(m.id) ? 'primary' : 'neutral'"
-                  :variant="row.profiles.includes(m.id) ? 'solid' : 'subtle'"
-                  size="sm"
-                  :title="m.username"
-                  :label="m.username"
-                  class="min-h-9 rounded-full"
-                  @click="toggleProfile(row, m.id)"
-                >
-                  <template #leading>
-                    <UAvatar
-                      :text="initials(m.username)"
-                      size="3xs"
-                      :ui="{ root: 'bg-inverted/15', fallback: 'text-inherit text-[9px]' }"
-                    />
-                  </template>
-                </UButton>
-              </div>
-
-              <!-- Retroactive sync: only meaningful once someone is assigned. -->
-              <div v-if="row.isShared" class="mt-2.5 flex flex-wrap items-center gap-2">
-                <template v-if="row.isShow">
-                  <span v-if="row.onlyNew" class="text-xs text-muted">
-                    Only new watches will sync.
-                    <ULink class="text-primary" @click="setOnlyNew(row.rating_key, false)">change</ULink>
-                  </span>
-                  <template v-else>
-                    <UButton
-                      color="neutral"
-                      variant="subtle"
-                      label="Sync all previous episodes"
-                      :loading="busyKey === row.rating_key"
-                      :disabled="busyKey !== null && busyKey !== row.rating_key"
-                      @click="backfill(row.rating_key)"
-                    />
-                    <UButton
-                      color="neutral"
-                      variant="subtle"
-                      label="Only new ones"
-                      @click="setOnlyNew(row.rating_key, true)"
-                    />
-                  </template>
-                </template>
-                <UButton
-                  v-else
-                  color="neutral"
-                  variant="subtle"
-                  label="Sync now"
-                  :loading="busyKey === row.rating_key"
-                  :disabled="busyKey !== null && busyKey !== row.rating_key"
-                  @click="backfill(row.rating_key)"
-                />
-
-                <UBadge
-                  v-if="row.result"
-                  :color="row.result.ok ? 'success' : 'error'"
-                  variant="subtle"
-                  :label="row.result.msg"
-                />
-              </div>
-            </div>
-          </div>
-        </UCard>
-      </div>
-
-      <div v-if="!sharedOnly && items.length < total" class="pt-1 text-center">
-        <UButton
-          color="neutral"
-          variant="subtle"
-          :loading="loading"
-          :label="`Load more (${items.length}/${total})`"
-          @click="load(items.length)"
+          :row="row"
+          :mappings="mappings"
+          @edit="openEdit(row)"
         />
       </div>
+    </UCard>
 
-      <div v-if="loading && !items.length" class="py-6 text-center text-sm text-muted">
-        Loading library…
-      </div>
-    </template>
+    <SharedTitleModal
+      v-model:open="modalOpen"
+      :mode="mode"
+      :mappings="mappings"
+      :shared-keys="sharedKeys"
+      :row="editing"
+      :busy="busy"
+      @submit="saveTitle"
+      @remove="removeTitle"
+    />
   </div>
 </template>

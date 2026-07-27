@@ -388,13 +388,17 @@ async function runTest(dryRun: boolean) {
     <SetupStep :n="2" title="seenr users" hint="each Plex user → their seenr token">
       <p v-if="!store.mappings.length" class="text-sm text-muted">No users yet. Add one below.</p>
 
-      <!-- divide-muted, not divide-default: matches the Dashboard event list,
-           where the row rule is white/5 while the card outline is white/10. -->
-      <div v-else class="-mx-4 divide-y divide-muted border-y border-muted sm:-mx-6">
+      <!-- Discrete cards rather than a divide-y list. A full-bleed ruled list
+           borrowed from the Dashboard read as one undifferentiated block here,
+           because unlike an event feed each row is a thing you act on. Giving
+           each its own surface and ring separates them without adding rules —
+           this card sits on bg-elevated/40, a step up from the page-coloured
+           inputs below it, so the two groups don't blend. -->
+      <div v-else class="space-y-2">
         <div
           v-for="m in store.mappings"
           :key="m.id"
-          class="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:gap-3 sm:px-6"
+          class="flex flex-col gap-2.5 rounded-lg bg-elevated/40 px-3.5 py-3 ring-1 ring-default sm:flex-row sm:items-center sm:gap-3"
         >
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-2 text-sm font-medium text-highlighted">

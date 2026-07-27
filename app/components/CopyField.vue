@@ -20,7 +20,10 @@ async function copy() {
     <div class="flex items-stretch gap-2">
       <!-- bg-default is darker than the card it sits in, matching the old
            bg-black/40 inset. -->
-      <code class="min-w-0 flex-1 overflow-x-auto whitespace-pre rounded-lg bg-default px-3 py-2 font-mono text-xs ring-1 ring-default">{{ value }}</code>
+      <!-- `flex items-center` because the row is items-stretch and the Copy
+           button next to it is min-h-11 (44px): without it the single line of
+           text sits at the top of a stretched box and reads as bottom padding. -->
+      <code class="flex min-w-0 flex-1 items-center overflow-x-auto whitespace-pre rounded-lg bg-default px-3 py-2 font-mono text-xs ring-1 ring-default">{{ value }}</code>
       <UButton
         :color="copied ? 'success' : 'neutral'"
         :variant="copied ? 'solid' : 'subtle'"

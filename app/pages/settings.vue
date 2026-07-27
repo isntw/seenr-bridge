@@ -293,7 +293,11 @@ async function runTest(dryRun: boolean) {
           URL e.g. <code class="text-default">http://tautulli:8181</code> · key from Tautulli →
           Settings → Web Interface → API key
         </p>
-        <div class="flex flex-col gap-3 border-t border-default pt-4 pb-5 sm:flex-row sm:justify-end">
+        <!-- No border-t here. Right-alignment plus whitespace already separates
+             the actions from the fields, and the seam starting the next
+             sub-section is the only rule in this card that carries meaning —
+             four stacked rules read as noise. -->
+        <div class="flex flex-col gap-3 pt-1 sm:flex-row sm:justify-end">
           <!-- Below sm the row stacks with the primary on top (order-1), so the
                action you almost always want is the first control you meet as the
                row scrolls into view; the secondary drops beneath it. -->
@@ -328,16 +332,17 @@ async function runTest(dryRun: boolean) {
             :key="t.key"
             type="button"
             :aria-pressed="isTriggerSelected(t.key)"
-            class="min-h-11 rounded-lg px-3.5 text-sm ring-1 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-400"
+            class="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-3.5 text-sm ring-1 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-400"
             :class="isTriggerSelected(t.key)
               ? 'bg-primary-600/20 text-primary-200 ring-primary-400/40'
               : 'bg-default text-muted ring-default hover:text-default'"
             @click="toggleTrigger(t.key, !isTriggerSelected(t.key))"
           >
-            <span aria-hidden="true" class="mr-1 inline-block w-3 text-center">{{ isTriggerSelected(t.key) ? '✓' : '' }}</span>{{ t.label }}
+            <span v-if="isTriggerSelected(t.key)" aria-hidden="true">✓</span>
+            <span>{{ t.label }}</span>
           </button>
         </div>
-        <div class="flex border-t border-default pt-4 sm:justify-end">
+        <div class="flex pt-1 sm:justify-end">
           <UButton
             :loading="syncing"
             label="Sync to Tautulli"
@@ -350,7 +355,7 @@ async function runTest(dryRun: boolean) {
              directly above it, not a third page-level section, so it gets no
              card background, ring or radius — unlike Advanced and Test, which
              use DisclosureCard. -->
-        <UCollapsible v-model:open="manual" class="border-t border-default pt-2">
+        <UCollapsible v-model:open="manual">
           <UButton color="neutral" variant="ghost" class="w-full min-h-11 justify-start gap-2.5 px-0">
             <UIcon
               name="i-lucide-chevron-right"

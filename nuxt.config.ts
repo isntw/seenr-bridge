@@ -8,6 +8,7 @@ export default defineNuxtConfig({
     head: {
       title: 'Seenr Bridge',
       htmlAttrs: { lang: 'en' },
+      link: [{ rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }],
     },
   },
 

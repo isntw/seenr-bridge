@@ -303,6 +303,17 @@ async function loadPlexLink() {
   }
 }
 
+// Reads as a sentence rather than a ratio. "0 of 0 users matched" is what a fresh
+// install would otherwise show — connected and fine, but phrased like a failure.
+const matchedLabel = computed(() => {
+  const l = plexLink.value
+  if (!l) return ''
+  const total = l.matched.length + l.unmatched.length
+  if (!total) return 'connected — no users mapped yet'
+  if (!l.unmatched.length) return total === 1 ? 'connected — 1 user ready' : `connected — all ${total} users ready`
+  return `${l.matched.length} of ${total} users ready`
+})
+
 // The PIN flow: create a PIN, open plex.tv in a new tab, then poll until the operator
 // approves it. The token is saved server-side by the poll endpoint and never comes back
 // to the browser.
@@ -625,44 +636,55 @@ async function runTest(dryRun: boolean) {
       </p>
     </SetupStep>
 
-    <SetupStep :n="3" title="Plex" hint="optional — also mark co-watched titles watched in Plex">
+    <SetupStep :n="3" title="Plex" badge="optional" hint="mark co-watched titles watched in Plex too">
       <p class="text-sm text-muted">
-        Plex stores "watched" per account, so marking a co-watcher's copy needs their own
-        access. Sign in as the server owner once and the bridge finds the rest.
+        Plex keeps watched state per account, so marking someone else's copy needs their
+        access — not yours. Connect once as the server owner and the bridge picks up
+        everyone you share with.
       </p>
 
       <UAlert v-if="plexError" color="error" variant="subtle" class="mt-3" :description="plexError" />
 
       <div class="mt-3 flex flex-wrap items-center gap-3">
+        <!-- Plex brand button. The colours are hardcoded rather than themed because they
+             are Plex's, not ours: #EBAF00 on near-black is the sign-in treatment their
+             other integrations use, and it must not follow the violet app theme. The mark
+             is inlined instead of pulling in @iconify-json/simple-icons for one glyph. -->
         <UButton
-          :label="plexLink?.connected ? 'Reconnect Plex' : 'Sign in with Plex'"
           :loading="plexBusy"
-          icon="i-lucide-link"
+          class="bg-[#EBAF00] text-black font-semibold hover:bg-[#f5bd1f] focus-visible:outline-[#EBAF00] disabled:bg-[#EBAF00]/60"
           @click="signInWithPlex"
-        />
+        >
+          <template v-if="!plexBusy" #leading>
+            <svg viewBox="0 0 32 32" class="size-4 shrink-0" aria-hidden="true">
+              <path fill="currentColor" d="M15.527 0H6.24l10.239 16L6.24 32h9.287L25.76 16z" />
+            </svg>
+          </template>
+          {{ plexLink?.connected ? 'Reconnect Plex' : 'Sign in with Plex' }}
+        </UButton>
+
         <span v-if="plexBusy" class="text-xs text-dimmed">
           Approve the request in the Plex tab that just opened…
         </span>
-        <template v-else-if="plexLink?.connected">
-          <UBadge
-            :color="plexLink.unmatched.length ? 'warning' : 'success'"
-            variant="subtle"
-            size="sm"
-            :label="`${plexLink.matched.length} of ${plexLink.matched.length + plexLink.unmatched.length} users matched`"
-          />
-        </template>
+        <UBadge
+          v-else-if="plexLink?.connected"
+          :color="plexLink.unmatched.length ? 'warning' : 'success'"
+          variant="subtle"
+          size="sm"
+          :label="matchedLabel"
+        />
       </div>
 
       <p v-if="plexLink?.error" class="mt-2 text-xs text-warning">
-        Plex reported: {{ plexLink.error }}
+        Plex couldn't be reached: {{ plexLink.error }}
       </p>
       <p v-else-if="plexLink?.unmatched.length" class="mt-2 text-xs text-warning">
-        No token found for {{ plexLink.unmatched.join(', ') }} — likely a Plex Home profile.
-        Add one by hand under Configure for that user, or their Plex will be left alone.
+        No Plex access for {{ plexLink.unmatched.join(', ') }} — usually a Plex Home profile,
+        which Plex doesn't list. Paste a token under Configure for them, or their Plex stays
+        untouched.
       </p>
       <p class="mt-2 text-xs text-dimmed">
-        Nothing is written to Plex until a shared title has "Also mark watched in Plex"
-        ticked on the Shared page.
+        Nothing reaches Plex until you tick “Also mark watched in Plex” on a shared title.
       </p>
     </SetupStep>
 

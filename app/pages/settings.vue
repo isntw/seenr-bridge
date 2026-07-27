@@ -326,17 +326,39 @@ async function signInWithPlex() {
     })
     window.open(pin.url, '_blank', 'noopener')
 
+    // Poll to the deadline and no further. A blip mid-poll is skipped rather than
+    // aborting the whole sign-in: the operator has already approved in Plex by then,
+    // and making them start over for one dropped request is the wrong trade. Every
+    // request is bounded, so no single hung call can leave the button spinning.
     const deadline = Date.now() + 120_000
+    let approved = false
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 2000))
-      const r = await $fetch<{ pending: boolean }>(`/api/plex/pin/${encodeURIComponent(pin.id)}`)
-      if (!r.pending) {
-        await store.fetch()
-        await loadPlexLink()
-        return
+      try {
+        const r = await $fetch<{ pending: boolean }>(`/api/plex/pin/${encodeURIComponent(pin.id)}`, {
+          timeout: 10_000,
+        })
+        if (!r.pending) {
+          approved = true
+          break
+        }
+      } catch {
+        // transient — try again until the deadline
       }
     }
-    plexError.value = 'Timed out waiting for Plex. Try again.'
+
+    if (!approved) {
+      plexError.value = 'Timed out waiting for Plex. Try again.'
+      return
+    }
+    // Refresh separately: the account IS linked at this point, so a slow status read
+    // must not surface as "could not sign in".
+    try {
+      await store.fetch()
+      await loadPlexLink()
+    } catch (e) {
+      plexError.value = apiErrorMessage(e, 'Signed in, but could not read the status. Reload to check.')
+    }
   } catch (e) {
     plexError.value = apiErrorMessage(e, 'Could not sign in with Plex.')
   } finally {

@@ -197,12 +197,42 @@ async function saveConnection() {
   }
 }
 
+// The verdict lands on the button itself: it is where the click happened and where
+// you are already looking. It reverts after a few seconds so a stale "Connected"
+// can never be read as the current state — that is what the status pill is for.
+type ConnTest = 'idle' | 'busy' | 'ok' | 'bad'
+const connTest = ref<ConnTest>('idle')
+let connTestRevert: ReturnType<typeof setTimeout> | undefined
+
+const CONN_TEST_HOLD_MS = 5000
+
+const connTestLabel = computed(() =>
+  connTest.value === 'ok' ? 'Connected' : connTest.value === 'bad' ? 'Failed' : 'Test connection',
+)
+
+onBeforeUnmount(() => clearTimeout(connTestRevert))
+
 async function testConnection() {
-  const r = await store.testTautulli({
-    tautulli_url: store.settings!.tautulli_url,
-    tautulli_apikey: store.settings!.tautulli_apikey,
-  })
-  toast.add({ title: r.message, color: r.ok ? 'success' : 'error' })
+  clearTimeout(connTestRevert)
+  connTest.value = 'busy'
+  try {
+    const r = await store.testTautulli({
+      tautulli_url: store.settings!.tautulli_url,
+      tautulli_apikey: store.settings!.tautulli_apikey,
+    })
+    connTest.value = r.ok ? 'ok' : 'bad'
+    // Only on failure. The message names the Plex server on success, which the
+    // button already conveys more directly — but a failure reason ("HTTP 401")
+    // is actionable and far too long to sit in a label.
+    if (!r.ok) toast.add({ title: r.message, color: 'error' })
+  } catch (e) {
+    // testTautulli rejects if the request itself fails, e.g. the bridge is down.
+    // Without this the button would sit spinning for ever.
+    connTest.value = 'bad'
+    toast.add({ title: apiErrorMessage(e, 'Could not reach the bridge.'), color: 'error' })
+  } finally {
+    connTestRevert = setTimeout(() => { connTest.value = 'idle' }, CONN_TEST_HOLD_MS)
+  }
 }
 
 async function addMapping() {
@@ -393,10 +423,14 @@ async function runTest(dryRun: boolean) {
           <!-- Below sm the row stacks with the primary on top (order-1), so the
                action you almost always want is the first control you meet as the
                row scrolls into view; the secondary drops beneath it. -->
+          <!-- Colour, icon and label all carry the verdict, so it reads without
+               relying on colour alone. -->
           <UButton
-            color="neutral"
+            :loading="connTest === 'busy'"
+            :color="connTest === 'ok' ? 'success' : connTest === 'bad' ? 'error' : 'neutral'"
             variant="subtle"
-            label="Test connection"
+            :icon="connTest === 'ok' ? 'i-lucide-check' : connTest === 'bad' ? 'i-lucide-x' : undefined"
+            :label="connTestLabel"
             class="justify-center order-2 sm:order-1"
             @click="testConnection"
           />

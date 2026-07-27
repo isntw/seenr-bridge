@@ -32,6 +32,12 @@ const tiles = computed(() => [
   { label: 'Users', icon: 'i-lucide-users', value: stats.value?.users ?? '—', class: 'text-success-300' },
 ])
 
+// A co-watched title records one row per profile it forwarded to, so the raw feed
+// repeats the same watch N times. Group them back into one entry each.
+const groups = computed(() => groupEvents(events.value ?? []))
+
+// Deliberately counted in ROWS, not groups: `limit` and stats.total are both row
+// counts, so mixing in the grouped length here would make the number drift.
 const remaining = computed(() =>
   Math.max(0, (stats.value?.total ?? 0) - (events.value?.length ?? 0)),
 )
@@ -83,7 +89,7 @@ const remaining = computed(() =>
       <!-- divide-muted, not divide-default: the old list rule was white/5 while
            the card outline itself was white/10. -->
       <div v-else class="divide-y divide-muted">
-        <EventRow v-for="e in events" :key="e.id" :event="e" />
+        <EventRow v-for="g in groups" :key="g.key" :group="g" />
       </div>
 
       <template v-if="remaining > 0" #footer>

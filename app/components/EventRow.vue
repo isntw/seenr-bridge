@@ -30,12 +30,15 @@ const matchedBy = computed(() => {
   return (ids.find((i) => i.startsWith('tmdb://')) || ids[0]!).replace('://', ' ')
 })
 
+// No `rail` colour any more: the coloured stripe down the left of each row was the
+// one thing making this list look unlike the Shared page's. The badge below
+// carries the same information, so nothing was lost by dropping it.
 const status = computed(() => {
-  if (props.event.ok) return { label: 'checked in', color: 'success' as const, rail: 'bg-success' }
+  if (props.event.ok) return { label: 'checked in', color: 'success' as const }
   if (props.event.seenr_status) {
-    return { label: `seenr ${props.event.seenr_status}`, color: 'error' as const, rail: 'bg-error' }
+    return { label: `seenr ${props.event.seenr_status}`, color: 'error' as const }
   }
-  return { label: 'failed', color: 'warning' as const, rail: 'bg-warning' }
+  return { label: 'failed', color: 'warning' as const }
 })
 
 const timeAgo = computed(() => {
@@ -58,31 +61,27 @@ const pretty = computed(() => {
 
 <template>
   <div>
+    <!-- Geometry, hover and focus are deliberately identical to SharedTitleRow so
+         the two lists read as one system: same 72×48 poster, same px-4 sm:px-5
+         padding, same hover tint, same focus ring. -->
     <button
       type="button"
-      class="relative flex w-full items-start gap-3 py-3 pl-4 pr-2 text-left transition hover:bg-elevated/60"
+      class="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-elevated/40 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary-400 sm:px-5"
       :aria-expanded="open"
       @click="open = !open"
     >
-      <span class="absolute inset-y-2.5 left-0 w-[3px] rounded-full" :class="status.rail" />
-
       <img
         v-if="event.image"
         :src="`/api/image?path=${encodeURIComponent(event.image)}`"
         alt=""
         loading="lazy"
-        class="h-14 w-10 shrink-0 rounded-md object-cover ring-1 ring-default sm:h-16 sm:w-11"
+        class="h-[72px] w-12 shrink-0 rounded-md object-cover ring-1 ring-default"
       >
-      <div
-        v-else
-        class="grid h-14 w-10 shrink-0 place-items-center rounded-md bg-elevated text-xs text-muted ring-1 ring-default sm:h-16 sm:w-11"
-      >
-        ?
-      </div>
+      <div v-else class="h-[72px] w-12 shrink-0 rounded-md bg-elevated ring-1 ring-default" />
 
       <div class="min-w-0 flex-1">
         <div class="flex flex-wrap items-center gap-2">
-          <h3 class="min-w-0 truncate text-[15px] font-semibold tracking-tight text-highlighted">{{ derived.main }}</h3>
+          <h3 class="min-w-0 truncate text-sm font-medium text-highlighted">{{ derived.main }}</h3>
           <UBadge
             :color="event.media_type === 'movie' ? 'info' : 'primary'"
             variant="subtle"
@@ -100,7 +99,7 @@ const pretty = computed(() => {
           />
         </div>
 
-        <div v-if="derived.sub" class="mt-0.5 truncate text-sm text-muted">{{ derived.sub }}</div>
+        <div v-if="derived.sub" class="mt-0.5 truncate text-xs text-muted">{{ derived.sub }}</div>
 
         <div class="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-dimmed">
           <span>{{ event.username }}</span>
@@ -109,14 +108,22 @@ const pretty = computed(() => {
         </div>
       </div>
 
-      <div class="hidden shrink-0 flex-col items-end gap-1.5 pr-1 sm:flex">
+      <div class="hidden shrink-0 flex-col items-end gap-1.5 sm:flex">
         <UBadge :color="status.color" variant="subtle" size="sm" :label="status.label" />
         <span class="text-xs text-dimmed">{{ timeAgo }}</span>
       </div>
+
+      <!-- Shared's rows end in a chevron; this one expands in place, so it rotates
+           like the app's other disclosures rather than pointing at a new screen. -->
+      <UIcon
+        name="i-lucide-chevron-right"
+        class="size-4 shrink-0 text-dimmed transition-transform"
+        :class="open ? 'rotate-90' : ''"
+      />
     </button>
 
     <!-- bg-default is darker than the card, matching the old bg-black/30 well. -->
-    <div v-if="open" class="bg-default px-4 pb-4">
+    <div v-if="open" class="bg-default px-4 pb-4 sm:px-5">
       <UAlert v-if="event.error" color="error" variant="subtle" class="mb-2 mt-3" :description="event.error" />
       <div class="mb-1 pt-3 text-xs text-dimmed">
         rating_key {{ event.rating_key }} · event {{ event.event }} · ids: {{ event.ids.join(', ') || 'none' }}

@@ -1,13 +1,13 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
 
-/* Two one-off surfaces the pre-Nuxt design used that have no Nuxt UI token of
-   their own: the sidebar rail and the raised panel behind modals and menus.
-   Registering them here makes them real utilities (bg-rail / bg-panel) instead
-   of arbitrary hex values sprinkled through the templates. */
+/* The sidebar rail is the one surface with no Nuxt UI token of its own.
+   Registering it here makes it a real utility (bg-rail) instead of an arbitrary
+   hex value in the layout. There was a --color-panel beside it for the raised
+   modal/menu surface; it went when those component overrides did, since modals
+   and dropdowns now use the packaged bg-default. */
 @theme {
   --color-rail: #0b0f18;
-  --color-panel: #0e1320;
 }
 
 /* The app is forced dark (colorMode.preference in nuxt.config), and with

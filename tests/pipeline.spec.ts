@@ -33,6 +33,19 @@ vi.mock('../server/utils/seenr', () => ({
   forwardToSeenr: (...a: unknown[]) => forwardToSeenr(...(a as [])),
 }))
 
+const getPlexServer = vi.fn(async (..._a: unknown[]) => ({
+  url: 'http://plex:32400',
+  machineId: 'mach',
+}))
+const resolvePlexToken = vi.fn(async (...a: unknown[]): Promise<string | null> => `tok-${String(a[0])}`)
+const markWatched = vi.fn(async (..._a: unknown[]) => 200)
+
+vi.mock('../server/utils/plex', () => ({
+  getPlexServer: (...a: unknown[]) => getPlexServer(...(a as [])),
+  resolvePlexToken: (...a: unknown[]) => resolvePlexToken(...(a as [])),
+  markWatched: (...a: unknown[]) => markWatched(...(a as [])),
+}))
+
 let tmp: string
 
 async function load() {
@@ -51,6 +64,12 @@ beforeEach(() => {
   getWatchedEpisodeKeys.mockImplementation(async () => [])
   forwardToSeenr.mockClear()
   forwardToSeenr.mockImplementation(async () => ({ status: 200, body: 'ok' }))
+  getPlexServer.mockClear()
+  getPlexServer.mockImplementation(async () => ({ url: 'http://plex:32400', machineId: 'mach' }))
+  resolvePlexToken.mockClear()
+  resolvePlexToken.mockImplementation(async (...a: unknown[]) => `tok-${String(a[0])}`)
+  markWatched.mockClear()
+  markWatched.mockImplementation(async () => 200)
 })
 
 afterEach(async () => {
@@ -423,5 +442,211 @@ describe('processEvent library gate', () => {
     expect(r.ok).toBe(true)
     expect(forwardToSeenr).not.toHaveBeenCalled()
     expect(db.listEvents(10)).toHaveLength(0)
+  })
+})
+
+// Plex writes are per shared title and opt-in. The trigger user is never written to:
+// they pressed play, so Plex already has their copy right.
+describe('processEvent Plex marking', () => {
+  async function sharedWithPlex(plex_sync: number) {
+    const { db, pipeline } = await configured()
+    db.saveSettings({ plex_token: 'owner-tok' })
+    const alice = db.upsertMapping('alice', 'tok-alice', 1, 1, 1)
+    const bob = db.upsertMapping('bob', 'tok-bob', 1, 1, 1)
+    db.setSharedTitle({ rating_key: '999', media_type: 'show', plex_sync }, [alice.id, bob.id])
+    return { db, pipeline }
+  }
+
+  it('marks the co-watcher in Plex but not the trigger', async () => {
+    const { pipeline } = await sharedWithPlex(1)
+
+    await pipeline.processEvent(input) // input.username === 'alice'
+
+    expect(markWatched).toHaveBeenCalledOnce()
+    expect(markWatched).toHaveBeenCalledWith('http://plex:32400', 'tok-bob', '12345')
+  })
+
+  it('marks the EPISODE key, not the show key the share is filed under', async () => {
+    const { pipeline } = await sharedWithPlex(1)
+
+    await pipeline.processEvent(input)
+
+    // '999' is the share key; '12345' is the episode actually watched.
+    expect(markWatched.mock.calls[0]![2]).toBe('12345')
+  })
+
+  it('records the Plex status on the co-watcher row and leaves the trigger row null', async () => {
+    const { db, pipeline } = await sharedWithPlex(1)
+
+    await pipeline.processEvent(input)
+
+    const rows = db.listEvents(10)
+    expect(rows.find((r) => r.username === 'bob')!.plex_status).toBe(200)
+    expect(rows.find((r) => r.username === 'alice')!.plex_status).toBeNull()
+  })
+
+  it('does nothing in Plex when the share has plex_sync off', async () => {
+    const { pipeline } = await sharedWithPlex(0)
+
+    await pipeline.processEvent(input)
+
+    expect(markWatched).not.toHaveBeenCalled()
+    expect(getPlexServer).not.toHaveBeenCalled()
+  })
+
+  it('does not touch Plex for an unshared watch', async () => {
+    const { db, pipeline } = await configured()
+    db.saveSettings({ plex_token: 'owner-tok' })
+    db.upsertMapping('alice', 'tok-alice', 1, 1, 1)
+
+    await pipeline.processEvent(input)
+
+    expect(getPlexServer).not.toHaveBeenCalled()
+    expect(markWatched).not.toHaveBeenCalled()
+  })
+
+  it('records why nothing was marked when no Plex account is connected', async () => {
+    const { db, pipeline } = await configured()
+    const alice = db.upsertMapping('alice', 'tok-alice', 1, 1, 1)
+    const bob = db.upsertMapping('bob', 'tok-bob', 1, 1, 1)
+    db.setSharedTitle({ rating_key: '999', media_type: 'show', plex_sync: 1 }, [alice.id, bob.id])
+
+    const r = await pipeline.processEvent(input)
+
+    expect(markWatched).not.toHaveBeenCalled()
+    // seenr still succeeded — Plex is the extra, not the job.
+    expect(r.ok).toBe(true)
+    const bobRow = db.listEvents(10).find((row) => row.username === 'bob')!
+    expect(bobRow.ok).toBe(1)
+    expect(bobRow.error).toContain('No Plex account connected')
+  })
+
+  it('records the reason when a co-watcher has no discoverable token', async () => {
+    const { db, pipeline } = await sharedWithPlex(1)
+    resolvePlexToken.mockImplementation(async () => null)
+
+    await pipeline.processEvent(input)
+
+    const bobRow = db.listEvents(10).find((r) => r.username === 'bob')!
+    expect(bobRow.ok).toBe(1)
+    expect(bobRow.error).toContain('No Plex token for bob')
+  })
+
+  it('leaves ok=1 when the Plex write fails but seenr succeeded', async () => {
+    const { db, pipeline } = await sharedWithPlex(1)
+    markWatched.mockImplementation(async () => 401)
+
+    const r = await pipeline.processEvent(input)
+
+    expect(r.ok).toBe(true)
+    const bobRow = db.listEvents(10).find((row) => row.username === 'bob')!
+    expect(bobRow.ok).toBe(1)
+    expect(bobRow.plex_status).toBe(401)
+    expect(bobRow.error).toContain('Plex HTTP 401')
+  })
+
+  it('survives a thrown Plex error and records it', async () => {
+    const { db, pipeline } = await sharedWithPlex(1)
+    markWatched.mockImplementation(async () => {
+      throw new Error('ECONNREFUSED')
+    })
+
+    const r = await pipeline.processEvent(input)
+
+    expect(r.ok).toBe(true)
+    expect(db.listEvents(10).find((row) => row.username === 'bob')!.error).toContain('ECONNREFUSED')
+  })
+
+  it('records a server-lookup failure without blocking the seenr fan-out', async () => {
+    const { db, pipeline } = await sharedWithPlex(1)
+    getPlexServer.mockImplementation(async () => {
+      throw new Error('Tautulli HTTP 502')
+    })
+
+    const r = await pipeline.processEvent(input)
+
+    expect(r.fanout).toBe(2)
+    expect(forwardToSeenr).toHaveBeenCalledTimes(2)
+    expect(markWatched).not.toHaveBeenCalled()
+    expect(db.listEvents(10).find((row) => row.username === 'bob')!.error).toContain('Tautulli HTTP 502')
+  })
+
+  it('still marks Plex when the seenr forward fails — separate destinations', async () => {
+    const { db, pipeline } = await sharedWithPlex(1)
+    forwardToSeenr.mockImplementation(async () => {
+      throw new Error('seenr down')
+    })
+
+    await pipeline.processEvent(input)
+
+    expect(markWatched).toHaveBeenCalledOnce()
+    const bobRow = db.listEvents(10).find((row) => row.username === 'bob')!
+    expect(bobRow.ok).toBe(0)
+    expect(bobRow.plex_status).toBe(200)
+  })
+
+  it('does not mark Plex for a profile whose per-type sync is off', async () => {
+    const { db, pipeline } = await configured()
+    db.saveSettings({ plex_token: 'owner-tok' })
+    const alice = db.upsertMapping('alice', 'tok-alice', 1, 1, 1)
+    const bob = db.upsertMapping('bob', 'tok-bob', 1, 1, 0) // episode sync off
+    db.setSharedTitle({ rating_key: '999', media_type: 'show', plex_sync: 1 }, [alice.id, bob.id])
+
+    await pipeline.processEvent(input)
+
+    expect(markWatched).not.toHaveBeenCalled()
+  })
+
+  it('passes a per-mapping override through to token resolution', async () => {
+    const { db, pipeline } = await configured()
+    db.saveSettings({ plex_token: 'owner-tok' })
+    const alice = db.upsertMapping('alice', 'tok-alice', 1, 1, 1)
+    const bob = db.upsertMapping('bob', 'tok-bob', 1, 1, 1, 'bob-manual')
+    db.setSharedTitle({ rating_key: '999', media_type: 'show', plex_sync: 1 }, [alice.id, bob.id])
+
+    await pipeline.processEvent(input)
+
+    expect(resolvePlexToken).toHaveBeenCalledWith('bob', 'bob-manual', 'mach', 'owner-tok')
+  })
+})
+
+describe('backfillSharedTitle Plex marking', () => {
+  it('marks every assigned profile — a backfill has no trigger user', async () => {
+    const { db, pipeline } = await configured()
+    db.saveSettings({ plex_token: 'owner-tok' })
+    const alice = db.upsertMapping('alice', 'tok-alice', 1, 1, 1)
+    const bob = db.upsertMapping('bob', 'tok-bob', 1, 1, 1)
+    db.setSharedTitle({ rating_key: '999', media_type: 'show', plex_sync: 1 }, [alice.id, bob.id])
+    getWatchedEpisodeKeys.mockImplementation(async () => ['101', '102'])
+
+    await pipeline.backfillSharedTitle('999')
+
+    // 2 episodes x 2 profiles, nobody excluded.
+    expect(markWatched).toHaveBeenCalledTimes(4)
+    expect(markWatched.mock.calls.map((c) => c[2]).sort()).toEqual(['101', '101', '102', '102'])
+  })
+
+  it('resolves the Plex server once for the whole backfill', async () => {
+    const { db, pipeline } = await configured()
+    db.saveSettings({ plex_token: 'owner-tok' })
+    const alice = db.upsertMapping('alice', 'tok-alice', 1, 1, 1)
+    db.setSharedTitle({ rating_key: '999', media_type: 'show', plex_sync: 1 }, [alice.id])
+    getWatchedEpisodeKeys.mockImplementation(async () => ['101', '102', '103'])
+
+    await pipeline.backfillSharedTitle('999')
+
+    expect(getPlexServer).toHaveBeenCalledOnce()
+  })
+
+  it('does not touch Plex when the share has plex_sync off', async () => {
+    const { db, pipeline } = await configured()
+    db.saveSettings({ plex_token: 'owner-tok' })
+    const alice = db.upsertMapping('alice', 'tok-alice', 1, 1, 1)
+    db.setSharedTitle({ rating_key: '500', media_type: 'movie', plex_sync: 0 }, [alice.id])
+    getMetadata.mockImplementation(async () => ({ ...meta, media_type: 'movie', rating_key: '500' }))
+
+    await pipeline.backfillSharedTitle('500')
+
+    expect(markWatched).not.toHaveBeenCalled()
   })
 })

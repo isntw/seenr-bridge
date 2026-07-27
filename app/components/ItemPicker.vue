@@ -202,19 +202,18 @@ watch(movie, (m) => { model.value = m ? m.value : '' })
 
 <template>
   <div class="space-y-3">
-    <!-- UFieldGroup, NOT UButtonGroup — the latter was renamed in Nuxt UI v4 and
-         the old name silently renders nothing. -->
-    <UFieldGroup role="group" aria-label="Item source">
-      <UButton
-        v-for="m in MODES"
-        :key="m.value"
-        :color="mode === m.value ? 'primary' : 'neutral'"
-        :variant="mode === m.value ? 'subtle' : 'outline'"
-        :aria-pressed="mode === m.value"
-        :label="m.label"
-        @click="pick(m.value)"
-      />
-    </UFieldGroup>
+    <!-- :model-value + @update:model-value rather than v-model, deliberately.
+         guard() sets `mode` programmatically when a library load fails, and this
+         event fires only on user interaction — so pick()'s `failed = ''` can never
+         wipe the very message that fallback just set. A plain v-model watcher
+         would, and the message would be gone before it ever rendered. -->
+    <UTabs
+      :model-value="mode"
+      :items="MODES"
+      :content="false"
+      aria-label="Item source"
+      @update:model-value="(v) => pick(v as Mode)"
+    />
 
     <div v-if="mode === 'tv'" class="grid gap-3 sm:grid-cols-3 sm:items-end">
       <UFormField label="Show">

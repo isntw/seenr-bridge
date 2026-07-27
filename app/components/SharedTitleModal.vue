@@ -257,24 +257,18 @@ function submit() {
           </h3>
 
           <template v-if="!isEdit && !picked">
-            <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <UFieldGroup role="group" aria-label="Media type">
-                <UButton
-                  v-for="t in MEDIA_TYPES"
-                  :key="t.value"
-                  :color="type === t.value ? 'primary' : 'neutral'"
-                  :variant="type === t.value ? 'solid' : 'outline'"
-                  :aria-pressed="type === t.value"
-                  :label="t.label"
-                  @click="type = t.value"
-                />
-              </UFieldGroup>
+            <!-- Stacked, not side by side: a horizontal UTabs list is w-full with
+                 equally-grown triggers, so sharing a row with the search box would
+                 need a width override to look right. Stacking is what the stock
+                 component wants. -->
+            <div class="space-y-2">
+              <UTabs v-model="type" :items="MEDIA_TYPES" :content="false" aria-label="Media type" />
               <UInput
                 v-model="search"
                 :placeholder="`Search ${type === 'show' ? 'shows' : 'movies'}…`"
                 :loading="loading"
                 icon="i-lucide-search"
-                class="min-w-0 flex-1"
+                class="w-full"
               />
             </div>
 

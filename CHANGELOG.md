@@ -8,7 +8,8 @@ Notable changes per release. Versions follow [semantic versioning](https://semve
 
 - A shared title can now also be marked watched **in Plex** for its co-watching profiles, not just checked in to seenr. Tick "Also mark watched in Plex" when adding or editing a shared title. Whoever actually pressed play is skipped — their copy is already watched — and the retroactive "sync all previously watched episodes" option marks Plex too.
 - Settings gained a Plex step. Sign in once as the server owner and the bridge finds each co-watcher's own Plex access by itself, including profiles you add later. It reports how many of your mapped users it can act for, so a gap is visible before it matters rather than as a silent no-op. Anyone it cannot find — typically a Plex Home profile, which Plex does not list — can be given a token by hand under Configure.
-- Dashboard event rows show whether the Plex write landed alongside the seenr result.
+- The Shared page marks titles that write to Plex with a gold Plex badge, so it is visible from the list rather than only inside each title's dialog.
+- Dashboard event rows show whether the Plex write landed alongside the seenr result. A delivery whose seenr check-in succeeded but whose Plex write failed is amber, not green.
 
 ### Changed
 

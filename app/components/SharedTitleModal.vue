@@ -340,7 +340,7 @@ function submit() {
             v-model="plexSync"
             label="Mark watched in Plex too"
             :disabled="!plexConnected"
-            :description="plexConnected ? 'Whoever pressed play is skipped.' : 'Connect Plex in Settings first.'"
+            :description="plexConnected ? undefined : 'Connect Plex in Settings first.'"
           />
         </section>
 

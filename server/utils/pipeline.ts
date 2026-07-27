@@ -1,11 +1,12 @@
 import {
-  getSettings, getMappingByUsername, getSharedRecipients, listSharedTitles, insertEvent,
+  getSettings, getMappingByUsername, getSharedRecipients, getSharedTitle, listSharedTitles, insertEvent,
   parseLibraries,
   type MappingRow, type SettingsRow,
 } from './db'
 import { getMetadata, getWatchedEpisodeKeys } from './tautulli'
 import { buildPayload } from './scrobble'
 import { forwardToSeenr } from './seenr'
+import { getPlexServer, markWatched, resolvePlexToken, type PlexServer } from './plex'
 import type { IncomingEvent, ProcessResult, BackfillResult, TautulliMetadata } from '../../shared/types'
 
 function imageFor(meta: TautulliMetadata): string | null {
@@ -19,6 +20,15 @@ function titleKeyFor(meta: TautulliMetadata, ratingKey: string): string {
   return meta.media_type === 'episode' ? meta.grandparent_rating_key || ratingKey : ratingKey
 }
 
+interface DeliverOpts {
+  /** Record a real event row. False for previews. */
+  record: boolean
+  /** Where to mark watched, or null to skip Plex for this delivery. */
+  plex: PlexServer | null
+  /** Why Plex could not be attempted at all, for the event row. */
+  plexError: string | null
+}
+
 // Deliver one item, as watched/whatever, to one profile. Honors the profile's
 // enabled + per-type sync switches. Records a real event unless record === false.
 // Returns null when skipped (nothing forwarded), else the delivery result.
@@ -29,7 +39,7 @@ async function deliverToMapping(
   mapping: MappingRow,
   settings: SettingsRow,
   now: number,
-  record: boolean,
+  opts: DeliverOpts,
 ): Promise<{ ok: boolean; seenr_status?: number } | null> {
   if (!mapping.enabled) return null
   if (meta.media_type === 'movie' && !mapping.sync_movies) return null
@@ -39,31 +49,68 @@ async function deliverToMapping(
   const image = imageFor(meta)
   const series_key = seriesKeyFor(meta)
 
-  let status: number, respBody: string
+  // Plex first, and independent of seenr: they are separate destinations, so a
+  // seenr outage must not leave the co-watcher's Plex untouched (or vice versa).
+  let plex_status: number | null = null
+  let plexError: string | null = opts.plexError
+  if (opts.plex && !plexError) {
+    try {
+      const token = await resolvePlexToken(
+        mapping.username,
+        mapping.plex_token,
+        opts.plex.machineId,
+        settings.plex_token,
+      )
+      if (!token) {
+        plexError = `No Plex token for ${mapping.username}`
+      } else {
+        plex_status = await markWatched(opts.plex.url, token, ratingKey)
+        if (plex_status < 200 || plex_status >= 300) plexError = `Plex HTTP ${plex_status}`
+      }
+    } catch (e) {
+      plexError = `Plex write failed: ${e instanceof Error ? e.message : String(e)}`
+    }
+  }
+
+  let status: number | null = null
+  let seenrError: string | null = null
   try {
     const r = await forwardToSeenr(settings.seenr_base_url, mapping.seenr_token, built.payload)
     status = r.status
-    respBody = r.body
+    if (status < 200 || status >= 300)
+      seenrError = `seenr HTTP ${status} ${r.body?.slice(0, 200)}`.trim()
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e)
-    if (record)
-      insertEvent({
-        ts: now, action, event: built.event, username: mapping.username, media_type: meta.media_type,
-        title: built.title, rating_key: ratingKey, ids: JSON.stringify(built.ids), image, series_key,
-        seenr_status: null, plex_status: null, ok: 0, error: `Forward to seenr failed: ${msg}`, payload: JSON.stringify(built.payload),
-      })
-    return { ok: false }
+    seenrError = `Forward to seenr failed: ${e instanceof Error ? e.message : String(e)}`
   }
 
-  const ok = status >= 200 && status < 300
-  if (record)
+  // `ok` means THE SEENR FORWARD SUCCEEDED, deliberately. A failed Plex write must
+  // not flip it, or the Dashboard's failure count stops describing the bridge's job.
+  const ok = status !== null && status >= 200 && status < 300
+  if (opts.record)
     insertEvent({
       ts: now, action, event: built.event, username: mapping.username, media_type: meta.media_type,
       title: built.title, rating_key: ratingKey, ids: JSON.stringify(built.ids), image, series_key,
-      seenr_status: status, plex_status: null, ok: ok ? 1 : 0,
-      error: ok ? null : `seenr HTTP ${status} ${respBody?.slice(0, 200)}`.trim(), payload: JSON.stringify(built.payload),
+      seenr_status: status, plex_status, ok: ok ? 1 : 0,
+      error: [seenrError, plexError].filter(Boolean).join(' · ') || null,
+      payload: JSON.stringify(built.payload),
     })
-  return { ok, seenr_status: status }
+
+  return { ok, seenr_status: status ?? undefined }
+}
+
+// Resolve the Plex server ONCE per pipeline run, not once per delivery: a 60-episode
+// backfill across two co-watchers would otherwise ask Tautulli for the same address
+// 120 times. Never throws — a lookup failure becomes text on the event row.
+async function plexTargetFor(
+  settings: SettingsRow,
+): Promise<{ target: PlexServer | null; error: string | null }> {
+  if (!settings.plex_token)
+    return { target: null, error: 'No Plex account connected in Settings' }
+  try {
+    return { target: await getPlexServer(settings.tautulli_url, settings.tautulli_apikey), error: null }
+  } catch (e) {
+    return { target: null, error: `Plex server lookup failed: ${e instanceof Error ? e.message : String(e)}` }
+  }
 }
 
 // Full pipeline: enrich a Tautulli event with the item's real IDs and forward to seenr.
@@ -135,12 +182,24 @@ export async function processEvent(
   let recipients: MappingRow[] = [trigger]
   if (shared.length && shared.some((r) => r.id === trigger.id)) recipients = shared
 
+  // Plex marking is opt-in per share. Only asked about when there is somebody other
+  // than the trigger to write for, so an ordinary solo watch costs no extra calls.
+  const share = recipients.length > 1 ? getSharedTitle(key) : undefined
+  const plex = share?.plex_sync ? await plexTargetFor(settings) : { target: null, error: null }
+
   let triggerResult: { ok: boolean; seenr_status?: number } | null = null
   let delivered = 0
   for (const rcpt of recipients) {
-    const res = await deliverToMapping(meta, input.rating_key, input.action, rcpt, settings, now, record)
+    // The trigger is excluded from Plex: they pressed play, so their copy is already
+    // watched. Everything else about their delivery is unchanged.
+    const isTrigger = rcpt.id === trigger.id
+    const res = await deliverToMapping(meta, input.rating_key, input.action, rcpt, settings, now, {
+      record,
+      plex: isTrigger ? null : plex.target,
+      plexError: isTrigger ? null : plex.error,
+    })
     if (res) delivered++
-    if (rcpt.id === trigger.id) triggerResult = res
+    if (isTrigger) triggerResult = res
   }
 
   // Per-type sync could skip the trigger while still delivering to co-watchers.
@@ -166,6 +225,10 @@ export async function backfillSharedTitle(ratingKey: string): Promise<BackfillRe
   const profiles = getSharedRecipients(ratingKey)
   if (!profiles.length) return { ok: false, reason: 'No profiles assigned to this title', ...empty }
 
+  // No trigger user exists in a backfill — nobody just watched anything — so every
+  // assigned profile is marked, with none excluded.
+  const plex = share.plex_sync ? await plexTargetFor(settings) : { target: null, error: null }
+
   // Collect the item rating_keys to scrobble.
   let itemKeys: string[]
   if (share.media_type === 'movie') {
@@ -190,7 +253,11 @@ export async function backfillSharedTitle(ratingKey: string): Promise<BackfillRe
       continue // skip an item we can't resolve
     }
     for (const p of profiles) {
-      const res = await deliverToMapping(meta, itemKey, 'watched', p, settings, now, true)
+      const res = await deliverToMapping(meta, itemKey, 'watched', p, settings, now, {
+        record: true,
+        plex: plex.target,
+        plexError: plex.error,
+      })
       if (!res) continue
       delivered++
       if (res.ok) ok_count++

@@ -92,20 +92,11 @@ export default defineAppConfig({
       },
     },
 
-    // Every badge in the old design was a pill. Radius is set per size rather
-    // than on `base` because that is where the packaged theme puts it, and the
-    // size variant would otherwise win the tailwind-merge.
-    badge: {
-      variants: {
-        size: {
-          xs: { base: 'rounded-full' },
-          sm: { base: 'rounded-full' },
-          md: { base: 'rounded-full' },
-          lg: { base: 'rounded-full' },
-          xl: { base: 'rounded-full' },
-        },
-      },
-    },
+    // No `badge` override on purpose. The pre-Nuxt design made every badge a
+    // pill, which meant a per-size `rounded-full` block here — but that put the
+    // app's badges visibly out of step with the packaged component, so they now
+    // take the theme's own radius (rounded-sm at xs/sm, rounded-md above).
+    // The colour remap above and the per-call-site `variant="subtle"` stay.
 
     // Old modal: rounded-2xl on bg-[#0e1320] behind a bg-black/60 blur.
     modal: {

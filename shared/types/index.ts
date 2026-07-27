@@ -123,6 +123,13 @@ export interface LibraryItem {
   year: string
   media_type: string // 'show' | 'movie'
   image: string
+  // Which Tautulli library the row came from. Not decoration: two active libraries
+  // can hold the same title under DIFFERENT rating_keys (e.g. "Movies" and "Filme"),
+  // and the pipeline gates on section — so picking the copy from a library you don't
+  // actually play from forwards nothing. The picker has to make the two rows
+  // distinguishable.
+  section_id: string
+  library_name: string
 }
 
 // One level below a title: a show's seasons, or a season's episodes. `index` is

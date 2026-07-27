@@ -53,6 +53,9 @@ interface TautulliLibraryMediaRow {
 
 interface TautulliLibraryMediaInfo {
   data?: TautulliLibraryMediaRow[]
+  /** Rows in the section, BEFORE `search` narrows them — so it stays comparable to
+   *  the library row's `count` even on a filtered request. */
+  recordsTotal?: string | number
 }
 
 interface TautulliHistoryRow {
@@ -193,6 +196,33 @@ export async function getLibraries(url: string, apiKey: string): Promise<Tautull
   }))
 }
 
+// Tautulli's media-info table is a CACHE it only rebuilds when asked. Left alone
+// it keeps serving the snapshot from whenever it was last built: a section that
+// gained titles hides them, and one that lost them still offers rating_keys Plex
+// no longer resolves — which then render as Plex's generic placeholder poster and
+// scrobble nothing. Observed live: section "Movies" served 99 of its 308 films and
+// listed an "Avatar" whose key was long gone.
+//
+// The library row's own `count` tracks Plex correctly, so a disagreement with
+// `recordsTotal` is a reliable staleness signal. One refresh (~0.2-0.7s) fixes the
+// section for good; the cooldown means a burst of debounced searches triggers at
+// most one rebuild, so a library whose two counts never converge costs one extra
+// call a minute rather than one per keystroke.
+const REFRESH_COOLDOWN_MS = 60_000
+const lastRefreshAt = new Map<string, number>()
+
+/** Test seam only — module state would otherwise leak between specs. */
+export function resetLibraryRefreshCooldown(): void {
+  lastRefreshAt.clear()
+}
+
+function mayRefresh(sectionId: string, now: number): boolean {
+  const last = lastRefreshAt.get(sectionId) ?? 0
+  if (now - last < REFRESH_COOLDOWN_MS) return false
+  lastRefreshAt.set(sectionId, now)
+  return true
+}
+
 // Browse the show/movie library for the "shared titles" picker. Merges every
 // section of the requested type, searches server-side, and paginates in memory.
 export async function getLibraryItems(
@@ -216,15 +246,23 @@ export async function getLibraryItems(
     .filter((l) => !allowed.length || allowed.includes(l.section_id))
   const search = (opts.search || '').trim()
   const all: LibraryItem[] = []
+  const now = Date.now()
   for (const sec of sections) {
-    const data = await tautulliApi<TautulliLibraryMediaInfo>(url, apiKey, 'get_library_media_info', {
+    const query = (refresh: boolean) => ({
       section_id: sec.section_id,
       order_column: 'title',
       order_dir: 'asc',
       start: '0',
       length: '5000', // personal-scale libraries; search narrows large ones
       ...(search ? { search } : {}),
+      ...(refresh ? { refresh: 'true' } : {}),
     })
+
+    let data = await tautulliApi<TautulliLibraryMediaInfo>(url, apiKey, 'get_library_media_info', query(false))
+    if (Number(data?.recordsTotal) !== sec.count && mayRefresh(sec.section_id, now)) {
+      data = await tautulliApi<TautulliLibraryMediaInfo>(url, apiKey, 'get_library_media_info', query(true))
+    }
+
     const rows = Array.isArray(data?.data) ? data.data : []
     for (const r of rows) {
       all.push({
@@ -233,6 +271,8 @@ export async function getLibraryItems(
         year: r.year != null ? String(r.year) : '',
         media_type: r.media_type || opts.type,
         image: r.thumb || '',
+        section_id: sec.section_id,
+        library_name: sec.section_name,
       })
     }
   }

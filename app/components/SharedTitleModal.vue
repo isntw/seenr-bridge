@@ -171,10 +171,11 @@ function reset() {
     void load(0)
   }
 
-  // Editing defaults to 'new': saving a profile change must not silently kick off
-  // a large retroactive sync. Adding is the moment you actually want the backfill,
-  // so it defaults to 'all' there.
-  syncChoice.value = isEdit.value ? 'new' : 'all'
+  // Always 'new', in both modes. A retroactive backfill can scrobble hundreds of
+  // episodes to every assigned profile and there is no undo, so it has to be a
+  // choice the operator makes deliberately rather than the default they get for
+  // pressing Add.
+  syncChoice.value = 'new'
 }
 
 // Nothing is fetched until the modal opens, and never in edit mode — the row
@@ -282,7 +283,12 @@ function submit() {
                     class="h-9 w-6 shrink-0 rounded-sm object-cover ring-1 ring-default"
                   >
                   <div v-else class="h-9 w-6 shrink-0 rounded-sm bg-elevated ring-1 ring-default" />
-                  <span class="min-w-0 flex-1 truncate text-sm text-default">{{ i.title }}</span>
+                  <span class="min-w-0 flex-1">
+                    <span class="block truncate text-sm text-default">{{ i.title }}</span>
+                    <span v-if="i.library_name" class="block truncate text-xs text-dimmed">
+                      {{ i.library_name }}
+                    </span>
+                  </span>
                   <span v-if="i.year" class="shrink-0 text-xs text-dimmed">{{ i.year }}</span>
                   <span v-if="isAlreadyShared(i)" class="shrink-0 text-xs text-dimmed">already shared</span>
                 </button>
@@ -313,7 +319,10 @@ function submit() {
             <div v-else class="h-14 w-10 shrink-0 rounded bg-elevated ring-1 ring-default" />
             <div class="min-w-0 flex-1">
               <div class="truncate text-sm font-medium text-highlighted">{{ subject.title }}</div>
-              <div class="text-xs text-dimmed">{{ subject.year }} · {{ subject.media_type }}</div>
+              <div class="truncate text-xs text-dimmed">
+                {{ subject.year }} · {{ subject.media_type }}<template v-if="picked?.library_name">
+                  · {{ picked.library_name }}</template>
+              </div>
             </div>
             <UButton
               v-if="!isEdit"

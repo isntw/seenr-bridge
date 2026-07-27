@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { getChildren } from '../server/utils/tautulli'
+import { getChildren, getLibraryItems, resetLibraryRefreshCooldown } from '../server/utils/tautulli'
 
 const fetchMock = vi.fn()
 
@@ -11,6 +11,7 @@ function ok(data: unknown) {
 beforeEach(() => {
   fetchMock.mockReset()
   vi.stubGlobal('fetch', fetchMock)
+  resetLibraryRefreshCooldown()
 })
 
 afterEach(() => {
@@ -98,5 +99,94 @@ describe('getChildren', () => {
     expect(url).toBe('http://tautulli:8181/api/v2')
     expect(String(init.body)).toContain('cmd=get_children_metadata')
     expect(String(init.body)).toContain('rating_key=300')
+  })
+})
+
+// Tautulli's media-info table is a cache that only rebuilds on demand, so a stale
+// section silently hides titles and offers rating_keys Plex no longer resolves.
+// getLibraryItems detects that by comparing recordsTotal against the library row's
+// own count, which does track Plex.
+describe('getLibraryItems staleness refresh', () => {
+  const LIBS = [{ section_id: '1', section_name: 'Movies', section_type: 'movie', count: 308 }]
+
+  function mediaInfo(rows: { rating_key: string; title: string }[], recordsTotal: number) {
+    return ok({ recordsTotal, recordsFiltered: rows.length, data: rows })
+  }
+
+  /** The bodies of every get_library_media_info call, in order. */
+  function mediaInfoBodies() {
+    return fetchMock.mock.calls
+      .map((c) => String((c[1] as RequestInit | undefined)?.body ?? ''))
+      .filter((b) => b.includes('cmd=get_library_media_info'))
+  }
+
+  it('re-requests with refresh=true when the cached total is short of the library count', async () => {
+    fetchMock
+      .mockResolvedValueOnce(ok(LIBS))
+      .mockResolvedValueOnce(mediaInfo([{ rating_key: '4159', title: 'Avatar' }], 99))
+      .mockResolvedValueOnce(mediaInfo([{ rating_key: '12266', title: 'Avatar: The Way of Water' }], 308))
+
+    const out = await getLibraryItems('http://tautulli:8181', 'key', { type: 'movie' })
+
+    const bodies = mediaInfoBodies()
+    expect(bodies).toHaveLength(2)
+    expect(bodies[0]).not.toContain('refresh=true')
+    expect(bodies[1]).toContain('refresh=true')
+    // The refreshed reply wins, so the ghost row is gone.
+    expect(out.items.map((i) => i.rating_key)).toEqual(['12266'])
+    expect(out.total).toBe(1)
+  })
+
+  it('does not refresh when the counts already agree', async () => {
+    fetchMock
+      .mockResolvedValueOnce(ok(LIBS))
+      .mockResolvedValueOnce(mediaInfo([{ rating_key: '12266', title: 'Way of Water' }], 308))
+
+    await getLibraryItems('http://tautulli:8181', 'key', { type: 'movie' })
+
+    expect(mediaInfoBodies()).toHaveLength(1)
+  })
+
+  it('refreshes at most once per section inside the cooldown', async () => {
+    // Every reply stays short, so without a cooldown each call would rebuild —
+    // once per keystroke of a debounced search.
+    fetchMock.mockImplementation(async (_url: string, init?: RequestInit) => {
+      const body = String(init?.body ?? '')
+      return body.includes('cmd=get_libraries') ? ok(LIBS) : mediaInfo([], 99)
+    })
+
+    await getLibraryItems('http://tautulli:8181', 'key', { type: 'movie', search: 'av' })
+    await getLibraryItems('http://tautulli:8181', 'key', { type: 'movie', search: 'ava' })
+    await getLibraryItems('http://tautulli:8181', 'key', { type: 'movie', search: 'avat' })
+
+    expect(mediaInfoBodies().filter((b) => b.includes('refresh=true'))).toHaveLength(1)
+  })
+
+  it('keeps the search term on the refreshed request', async () => {
+    fetchMock
+      .mockResolvedValueOnce(ok(LIBS))
+      .mockResolvedValueOnce(mediaInfo([], 99))
+      .mockResolvedValueOnce(mediaInfo([{ rating_key: '12266', title: 'Way of Water' }], 308))
+
+    await getLibraryItems('http://tautulli:8181', 'key', { type: 'movie', search: 'avata' })
+
+    const [, refreshed] = mediaInfoBodies()
+    expect(refreshed).toContain('search=avata')
+    expect(refreshed).toContain('refresh=true')
+  })
+
+  it('applies the cooldown per section, not globally', async () => {
+    const twoSections = [
+      { section_id: '1', section_name: 'Movies', section_type: 'movie', count: 308 },
+      { section_id: '5', section_name: 'Filme', section_type: 'movie', count: 308 },
+    ]
+    fetchMock.mockImplementation(async (_url: string, init?: RequestInit) => {
+      const body = String(init?.body ?? '')
+      return body.includes('cmd=get_libraries') ? ok(twoSections) : mediaInfo([], 99)
+    })
+
+    await getLibraryItems('http://tautulli:8181', 'key', { type: 'movie' })
+
+    expect(mediaInfoBodies().filter((b) => b.includes('refresh=true'))).toHaveLength(2)
   })
 })

@@ -6,14 +6,41 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      # contents: write is what lets the last step create the tag and the release.
+      contents: write
       packages: write
     steps:
       - uses: actions/checkout@v4
+
+      # The release is driven by shared/version.ts, not by a pushed tag: a tag created
+      # with GITHUB_TOKEN does NOT trigger workflows, so a separate tag-triggered build
+      # would never run and the versioned image would silently never be published.
+      - name: Read version
+        id: v
+        run: |
+          set -euo pipefail
+          version=$(sed -n "s/.*VERSION = '\([0-9]*\.[0-9]*\.[0-9]*\)'.*/\1/p" shared/version.ts)
+          if [ -z "$version" ]; then
+            echo "::error file=shared/version.ts::could not parse VERSION"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "minor=${version%.*}" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null 2>&1; then
+            echo "fresh=false" >> "$GITHUB_OUTPUT"
+            echo "v$version already released — building :latest only" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "fresh=true" >> "$GITHUB_OUTPUT"
+            echo "v$version is new — will tag and release" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - uses: docker/setup-buildx-action@v3
 
@@ -29,8 +56,13 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
+          # The exact-version tag applies only when that version has no git tag yet,
+          # which keeps :2.2.1 immutable — pushing to main again without a bump must
+          # not move it onto a different commit.
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ steps.v.outputs.version }},enable=${{ steps.v.outputs.fresh == 'true' }}
+            type=raw,value=${{ steps.v.outputs.minor }},enable=${{ steps.v.outputs.fresh == 'true' }}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha
@@ -44,3 +76,31 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Last, so a version is never tagged when its image failed to build.
+      - name: Tag and release
+        if: github.ref == 'refs/heads/main' && steps.v.outputs.fresh == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          set -euo pipefail
+          # Prefer a hand-written CHANGELOG.md section, fall back to generated notes so
+          # a release is never blocked on having written one.
+          notes=$(mktemp)
+          if [ -f CHANGELOG.md ]; then
+            awk -v v="$VERSION" '
+              $0 ~ "^## +\\[?" v "\\]?" { on = 1; next }
+              on && /^## / { exit }
+              on { print }
+            ' CHANGELOG.md > "$notes"
+          fi
+          if [ -s "$notes" ]; then
+            echo "notes: CHANGELOG.md section" >> "$GITHUB_STEP_SUMMARY"
+            gh release create "v$VERSION" --target "$GITHUB_SHA" --title "v$VERSION" \
+              --latest --notes-file "$notes"
+          else
+            echo "notes: auto-generated (no CHANGELOG.md section for $VERSION)" >> "$GITHUB_STEP_SUMMARY"
+            gh release create "v$VERSION" --target "$GITHUB_SHA" --title "v$VERSION" \
+              --latest --generate-notes
+          fi

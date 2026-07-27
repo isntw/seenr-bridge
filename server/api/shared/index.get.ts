@@ -1,4 +1,4 @@
-import { listSharedTitles, setSharedTitleLibrary, getSettings } from '../../utils/db'
+import { listSharedTitles, setSharedTitleLibrary, setSharedTitleGuid, getSettings } from '../../utils/db'
 import { getMetadata } from '../../utils/tautulli'
 import type { SharedTitle } from '../../../shared/types'
 
@@ -12,7 +12,11 @@ import type { SharedTitle } from '../../../shared/types'
 // A key Plex no longer resolves therefore stays NULL forever, which is correct — it
 // has no library, and the UI says so.
 async function backfillLibraries(titles: SharedTitle[]): Promise<void> {
-  const missing = titles.filter((t) => !t.library_name)
+  // The guid matters more than the library: until it is filled in, a share only
+  // matches watches from the exact library copy it was created from, so a title
+  // shared from "Seriale" silently ignores every watch from "TV Shows". One
+  // get_metadata answers both questions, so they are resolved together.
+  const missing = titles.filter((t) => !t.library_name || !t.guid)
   if (!missing.length) return
 
   const s = getSettings()
@@ -22,6 +26,12 @@ async function backfillLibraries(titles: SharedTitle[]): Promise<void> {
     missing.map(async (t) => {
       try {
         const meta = await getMetadata(s.tautulli_url, s.tautulli_apikey, t.rating_key)
+
+        if (!t.guid && meta.guid) {
+          setSharedTitleGuid(t.rating_key, meta.guid)
+          t.guid = meta.guid
+        }
+
         const section = meta.section_id != null ? String(meta.section_id) : ''
         if (!section || !meta.library_name) return
         setSharedTitleLibrary(t.rating_key, section, meta.library_name)

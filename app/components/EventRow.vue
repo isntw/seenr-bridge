@@ -40,6 +40,17 @@ const status = computed(() => {
   return { label: `${ok} of ${total} checked in`, color: 'warning' as const }
 })
 
+// Whether this watch reached Plex at all, and whether every attempt landed. Null when
+// no recipient had a Plex write attempted, which is the ordinary case for an unshared
+// watch and must stay unlabelled rather than showing a "no Plex" badge on every row.
+const plexState = computed(() => {
+  const attempted = props.group.recipients.filter((r) => r.plex_status !== null)
+  if (!attempted.length) return null
+  const failed = attempted.filter((r) => !plexOk(r)).length
+  if (!failed) return { label: 'Plex', ok: true, title: `Marked watched in Plex for ${attempted.length === 1 ? '1 profile' : `${attempted.length} profiles`}` }
+  return { label: `Plex ${failed} failed`, ok: false, title: `${failed} of ${attempted.length} Plex writes failed` }
+})
+
 const timeAgo = computed(() => {
   const s = Math.floor((Date.now() - props.group.ts) / 1000)
   if (s < 60) return `${s}s ago`
@@ -99,6 +110,23 @@ function recipientColor(r: EventRecipient) {
             :label="group.media_type ?? 'unknown'"
           />
           <UBadge color="neutral" variant="subtle" size="sm" :label="eventType" />
+          <!-- Same gold Plex badge as the Shared page, so "this reached Plex" looks the
+               same wherever it appears. Absent, not greyed, when no Plex write was
+               attempted — otherwise every ordinary watch would carry a Plex label. -->
+          <UBadge
+            v-if="plexState"
+            variant="subtle"
+            size="sm"
+            :class="plexState.ok
+              ? 'bg-[#EBAF00]/10 text-[#EBAF00] ring-[#EBAF00]/30'
+              : 'bg-warning/10 text-warning ring-warning/30'"
+            :title="plexState.title"
+          >
+            <svg viewBox="0 0 32 32" class="size-3 shrink-0" aria-hidden="true">
+              <path fill="currentColor" d="M15.527 0H6.24l10.239 16L6.24 32h9.287L25.76 16z" />
+            </svg>
+            {{ plexState.label }}
+          </UBadge>
           <UBadge class="sm:hidden" :color="status.color" variant="subtle" size="sm" :label="status.label" />
         </div>
 

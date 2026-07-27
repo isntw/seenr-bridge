@@ -19,6 +19,12 @@ function seriesKeyFor(meta: TautulliMetadata): string | null {
 function titleKeyFor(meta: TautulliMetadata, ratingKey: string): string {
   return meta.media_type === 'episode' ? meta.grandparent_rating_key || ratingKey : ratingKey
 }
+// Plex's id for that same title, which — unlike the rating_key — is identical across
+// libraries holding the same show or film. This is what makes a share match a watch
+// from the copy the operator did not happen to pick when creating it.
+function titleGuidFor(meta: TautulliMetadata): string {
+  return (meta.media_type === 'episode' ? meta.grandparent_guid : meta.guid) || ''
+}
 
 interface DeliverOpts {
   /** Record a real event row. False for previews. */
@@ -178,13 +184,14 @@ export async function processEvent(
   // Fan-out: if this title is shared AND the watcher is one of its profiles,
   // deliver to every assigned profile; otherwise just the watcher.
   const key = titleKeyFor(meta, input.rating_key)
-  const shared = getSharedRecipients(key)
+  const guid = titleGuidFor(meta)
+  const shared = getSharedRecipients(key, guid)
   let recipients: MappingRow[] = [trigger]
   if (shared.length && shared.some((r) => r.id === trigger.id)) recipients = shared
 
   // Plex marking is opt-in per share. Only asked about when there is somebody other
   // than the trigger to write for, so an ordinary solo watch costs no extra calls.
-  const share = recipients.length > 1 ? getSharedTitle(key) : undefined
+  const share = recipients.length > 1 ? getSharedTitle(key, guid) : undefined
   const plex = share?.plex_sync ? await plexTargetFor(settings) : { target: null, error: null }
 
   let triggerResult: { ok: boolean; seenr_status?: number } | null = null

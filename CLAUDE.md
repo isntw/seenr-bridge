@@ -25,7 +25,7 @@ npm run dev         # nuxt dev, single process, http://localhost:8687
 npm run build        # nuxt build → .output/ (bundled Nitro server + static client)
 npm run preview       # preview the .output/ build
 npm start            # node .output/server/index.mjs — runs a prior build
-npm test              # vitest run — tests/**/*.spec.ts, 86 tests across 6 files
+npm test              # vitest run — tests/**/*.spec.ts, 90 tests across 6 files
 npm run test:watch     # vitest, watch mode
 npm run typecheck       # nuxt typecheck (app/ + server/ + shared/) && typecheck:tests (tests/ + vitest.config.ts)
 npm run typecheck:tests  # vue-tsc -p tsconfig.test.json alone — tests/ isn't in nuxt's own generated tsconfig

@@ -128,45 +128,20 @@ Change password and log out live in the account menu, top-right.
 - Passwords are hashed with scrypt; sessions are httpOnly cookies.
 - Because the webhook endpoint is unauthenticated, keep the bridge on a trusted network. If you expose it publicly, put a reverse proxy with its own protection in front.
 
+The full route list, and the webhook's exact request shape, are in [`docs/api.md`](docs/api.md).
+
 ## Data & backup
 
 All state — settings, your account, user mappings, shared titles, event history — is the single SQLite file at **`./data/seenr-bridge.db`**, mounted into the container. Back that up and you've backed up everything. Event history is capped at the most recent **1,000** rows.
 
-## API reference
-
-Everything is authed unless marked public.
-
-| Method | Path | Purpose |
-|---|---|---|
-| POST | `/api/webhook/tautulli` | **public** — Tautulli posts playback events here |
-| GET | `/api/health`, `/api/version` | **public** — health + version |
-| — | `/api/auth/status`, `/login`, `/register`, `/logout` | **public** — auth flow |
-| POST | `/api/auth/change-password` | change your password |
-| GET/PUT | `/api/settings` | connection + advanced config |
-| POST | `/api/settings/test-tautulli` | probe a URL + API key without saving |
-| GET | `/api/status` | readiness — Tautulli, webhook, users |
-| GET/POST | `/api/mappings` · DELETE `/api/mappings/:id` | per-user token + sync config |
-| GET/PUT | `/api/shared` | co-watched titles and their profiles |
-| POST | `/api/shared/:rating_key/backfill` | replay already-watched items to co-watchers |
-| GET | `/api/tautulli/users` | Plex usernames for the mapping picker |
-| GET | `/api/tautulli/library` | browse shows/movies (`?type=&search=&start=&length=`) |
-| GET | `/api/tautulli/children` | seasons or episodes of a `rating_key` |
-| POST | `/api/tautulli/sync-webhook` | create/update the Tautulli webhook |
-| GET | `/api/events` | recent scrobbles (`?limit=`) |
-| GET | `/api/stats` | dashboard counts |
-| GET | `/api/image` | poster art, proxied via Tautulli |
-| POST | `/api/test` | build (`dryRun`) or send a test scrobble |
-
 ## Development
-
-One install, one process, one port — API and UI share an origin in dev and production alike.
 
 ```bash
 npm install
 npm run dev        # http://localhost:8687
 
-npm test           # vitest
-npm run typecheck  # the only static check; there is no linter
+npm test
+npm run typecheck
 ```
 
 Or in Docker: `docker compose -f docker-compose.dev.yml up -d`

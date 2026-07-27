@@ -271,9 +271,15 @@ function submit() {
             <UAlert v-if="libError" color="error" variant="subtle" class="mt-2" :description="libError" />
 
             <div class="mt-2 max-h-56 overflow-y-auto rounded-lg ring-1 ring-default">
-              <p v-if="!items.length && !loading" class="px-3 py-6 text-center text-sm text-muted">
-                No titles found.
-              </p>
+              <!-- xs + naked so it stays proportionate to a 224px-tall list; the
+                   default size is built for a whole empty page. -->
+              <UEmpty
+                v-if="!items.length && !loading"
+                variant="naked"
+                size="xs"
+                icon="i-lucide-search-x"
+                :title="search.trim() ? `Nothing matching “${search.trim()}”` : 'No titles in the selected libraries'"
+              />
               <div v-else class="divide-y divide-muted">
                 <!-- Props only: UButton's ghost hover and its own disabled dimming,
                      which is what `already shared` rows relied on a hand-written

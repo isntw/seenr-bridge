@@ -259,10 +259,26 @@ watch(movie, (m) => { model.value = m ? m.value : '' })
     <p v-else-if="noChildren" class="text-xs text-warning" role="status">
       Tautulli returned no {{ noChildren }} for that selection.
     </p>
-    <p v-else-if="emptyLibrary" class="text-xs text-warning" role="status">
-      Tautulli reports no {{ mode === 'tv' ? 'TV' : 'movie' }} libraries. Try the other tab, or paste
-      a rating_key.
-    </p>
+    <!-- The two escape routes used to be prose telling you to click elsewhere.
+         UEmpty's `actions` are ButtonProps, onClick included, so they can just be
+         the buttons that do it. -->
+    <UEmpty
+      v-else-if="emptyLibrary"
+      role="status"
+      variant="naked"
+      size="xs"
+      icon="i-lucide-library-big"
+      :title="`Tautulli reports no ${mode === 'tv' ? 'TV' : 'movie'} libraries`"
+      :actions="[
+        {
+          label: mode === 'tv' ? 'Try movies' : 'Try TV',
+          color: 'neutral',
+          variant: 'subtle',
+          onClick: () => pick(mode === 'tv' ? 'movie' : 'tv'),
+        },
+        { label: 'Paste a rating_key', color: 'neutral', variant: 'subtle', onClick: () => pick('key') },
+      ]"
+    />
     <p v-else-if="truncated" class="text-xs text-warning" role="status">
       Showing the first {{ shown }} of {{ total }} titles alphabetically — if yours isn't listed,
       paste its rating_key.

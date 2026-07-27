@@ -25,10 +25,11 @@ defineProps<{
 
 <template>
   <!-- The seam is the ONE rule inside a SetupStep card. Action rows deliberately
-       carry no border of their own, so this needs symmetric space on both sides:
-       mt-6 puts air between the previous sub-section's buttons and the rule,
-       pt-6 between the rule and this sub-section's label. -->
-  <div :class="seam ? 'mt-6 border-t border-default pt-6' : ''">
+       carry no border of their own, so it needs symmetric space on both sides:
+       my-6 on the separator gives air above and below, where the old border-t
+       needed mt-6 on the wrapper and pt-6 on its content to do the same. -->
+  <div>
+    <USeparator v-if="seam" class="my-6" />
     <!-- unmount-on-hide=false is load-bearing: the default unmounts the content,
          which would discard half-typed credentials and the library checkbox state
          every time a section folded. -->

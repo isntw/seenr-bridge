@@ -79,6 +79,10 @@ function assigned(mappings: Mapping[], profiles: number[]) {
           :label="m.username"
         />
 
+        <!-- Left as prose, not UEmpty: this is a warning about a row that DOES
+             exist, sitting inside that row. UEmpty announces the absence of a whole
+             collection, and its icon-and-title block would dwarf the badges it
+             stands among. -->
         <span v-if="!row.profiles.length" class="text-xs text-warning">
           No profiles assigned — nothing is being co-watched.
         </span>

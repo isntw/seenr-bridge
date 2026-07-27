@@ -41,9 +41,11 @@ onBeforeUnmount(() => status.stop())
       <div class="mt-auto p-3">
         <div class="mb-2.5 text-center text-[11px] text-dimmed">v{{ VERSION }}</div>
         <div class="flex items-center gap-2 rounded-lg bg-elevated px-3 py-2.5">
-          <span
-            class="size-1.5 shrink-0 rounded-full"
-            :class="status.tautulli === null ? 'bg-neutral-500' : status.tautulli.ok ? 'bg-success' : 'bg-error'"
+          <UChip
+            standalone
+            inset
+            size="xs"
+            :color="status.tautulli === null ? 'neutral' : status.tautulli.ok ? 'success' : 'error'"
           />
           <span class="truncate text-xs text-muted">
             {{ status.tautulli === null ? 'Checking Tautulli…' : status.tautulli.ok ? 'Tautulli connected' : 'Tautulli unreachable' }}

@@ -359,9 +359,13 @@ async function runTest(dryRun: boolean) {
       <h2 class="text-lg font-semibold text-highlighted">Setup</h2>
       <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
         <span class="flex items-center gap-1.5">
-          <span
-            class="size-1.5 rounded-full"
-            :class="connStatus === 'pending' ? 'bg-neutral-500' : connStatus === 'ok' ? 'bg-success' : 'bg-error'"
+          <!-- standalone + inset is the documented way to render a lone Chip
+               inline; it is how Select and InputMenu draw their own indicators. -->
+          <UChip
+            standalone
+            inset
+            size="xs"
+            :color="connStatus === 'pending' ? 'neutral' : connStatus === 'ok' ? 'success' : 'error'"
           />
           <span class="text-muted">
             {{ connStatus === 'pending' ? 'checking…' : connStatus === 'ok' ? 'Tautulli connected' : 'Tautulli unreachable' }}
@@ -369,25 +373,25 @@ async function runTest(dryRun: boolean) {
         </span>
         <span class="text-dimmed">{{ status.users }} {{ status.users === 1 ? 'user' : 'users' }}</span>
         <span class="flex items-center gap-1.5">
-          <span
-            class="size-1.5 rounded-full"
-            :class="hookStatus === 'pending' ? 'bg-neutral-500' : hookStatus === 'ok' ? 'bg-success' : 'bg-error'"
+          <UChip
+            standalone
+            inset
+            size="xs"
+            :color="hookStatus === 'pending' ? 'neutral' : hookStatus === 'ok' ? 'success' : 'error'"
           />
           <span class="text-muted">
             {{ hookStatus === 'pending' ? 'checking…' : hookStatus === 'ok' ? 'webhook active' : 'no webhook' }}
           </span>
         </span>
-        <!-- The master kill switch, promoted out of Advanced. Wrapping it in a
-             <label> makes the word "Forwarding" part of the hit area, and gives
-             the switch a programmatic accessible name. -->
-        <label class="flex items-center gap-2">
-          <USwitch
-            :model-value="store.settings.forward_enabled"
-            :disabled="forwardingBusy"
-            @update:model-value="(v) => toggleForwarding(v === true)"
-          />
-          <span class="font-medium text-default">Forwarding</span>
-        </label>
+        <!-- The master kill switch, promoted out of Advanced. USwitch's own `label`
+             prop makes the word part of the hit area and supplies the accessible
+             name, which is what the hand-written <label> wrapper was for. -->
+        <USwitch
+          label="Forwarding"
+          :model-value="store.settings.forward_enabled"
+          :disabled="forwardingBusy"
+          @update:model-value="(v) => toggleForwarding(v === true)"
+        />
       </div>
     </div>
 
@@ -690,7 +694,9 @@ async function runTest(dryRun: boolean) {
            made that cell taller than its siblings and the row ragged. -->
       <p class="text-xs text-dimmed">The user must have a seenr token mapped in step 2.</p>
 
-      <div class="flex flex-col gap-3 border-t border-default pt-4 sm:flex-row sm:items-center">
+      <USeparator />
+
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
         <!-- Preview is the solid primary: it is the safe, common action, and was
              previously styled as the afterthought. Send drops from solid rose to
              `subtle` — still unmistakably the destructive half, no longer the
@@ -720,7 +726,9 @@ async function runTest(dryRun: boolean) {
         </p>
       </div>
 
-      <div v-if="testResult" class="space-y-3 border-t border-default pt-4">
+      <USeparator v-if="testResult" />
+
+      <div v-if="testResult" class="space-y-3">
         <div class="flex flex-wrap items-center gap-2">
           <UBadge
             :color="testResult.ok ? 'success' : testResult.skipped ? 'warning' : 'error'"

@@ -30,7 +30,8 @@ defineProps<{ title: string; summary?: string }>()
         </span>
       </UButton>
       <template #content>
-        <div class="space-y-4 border-t border-default p-5">
+        <USeparator />
+        <div class="space-y-4 p-5">
           <slot />
         </div>
       </template>

@@ -471,36 +471,57 @@ async function runTest(dryRun: boolean) {
           :description="store.librariesError"
         />
 
-        <p v-else-if="!libsSorted.length" class="text-xs text-muted">Loading libraries…</p>
+        <!-- Skeleton rows rather than the words "Loading libraries…": they occupy the
+             shape the real rows will, so the panel does not jump when they arrive.
+             The height/width classes are how USkeleton is sized — it has no
+             intrinsic dimensions — not an override of it. -->
+        <div v-else-if="!libsSorted.length" class="space-y-1.5">
+          <USkeleton v-for="i in 3" :key="i" class="h-11 w-full" />
+        </div>
 
         <template v-else>
           <div class="space-y-1.5">
-            <label
+            <!-- variant="card" is the row: it brings the border, the radius and (with
+                 size) the padding that a hand-rolled <label> wrapper used to supply,
+                 and it renders its own properly associated label element. It also
+                 borders the whole card in primary while checked, which the hand-made
+                 version never did — only the box itself showed state. -->
+            <UCheckbox
               v-for="l in libsSorted"
               :key="l.section_id"
-              class="flex items-center gap-2.5 rounded-lg bg-default px-3 py-2 ring-1 ring-default"
+              variant="card"
+              size="sm"
+              :model-value="isLibOn(l.section_id)"
+              @update:model-value="(v) => toggleLib(l.section_id, v === true)"
             >
-              <UCheckbox
-                :model-value="isLibOn(l.section_id)"
-                @update:model-value="(v) => toggleLib(l.section_id, v === true)"
-              />
-              <span class="truncate text-sm text-default">{{ l.section_name }}</span>
-              <UBadge
-                :color="l.section_type === 'movie' ? 'info' : 'primary'"
-                variant="subtle"
-                size="sm"
-                :label="l.section_type"
-              />
-              <UBadge v-if="!l.count" color="neutral" variant="subtle" size="sm" label="empty" />
-              <span class="ml-auto shrink-0 font-mono text-xs text-dimmed">{{ l.count }}</span>
-            </label>
+              <template #label>
+                <span class="flex items-center gap-2.5">
+                  <span class="truncate text-sm text-default">{{ l.section_name }}</span>
+                  <UBadge
+                    :color="l.section_type === 'movie' ? 'info' : 'primary'"
+                    variant="subtle"
+                    size="sm"
+                    :label="l.section_type"
+                  />
+                  <UBadge v-if="!l.count" color="neutral" variant="subtle" size="sm" label="empty" />
+                  <span class="ml-auto shrink-0 font-mono text-xs font-normal text-dimmed">
+                    {{ l.count }}
+                  </span>
+                </span>
+              </template>
+            </UCheckbox>
           </div>
 
           <div class="flex flex-col gap-3 pt-1 sm:flex-row sm:items-center">
-            <div class="flex gap-3 text-xs">
-              <ULink class="text-primary" @click="setAllLibs(true)">Select all</ULink>
-              <ULink class="text-primary" @click="setAllLibs(false)">None</ULink>
-              <ULink class="text-primary" @click="store.fetchLibraries()">Refresh</ULink>
+            <!-- UButton variant="link", not ULink: these are actions, and ULink is the
+                 navigation primitive. It happens to render a <button> when given no
+                 `to`, so the old markup worked — but `link` is the variant that exists
+                 for an action styled as a link, and it brings its own colour and
+                 focus ring instead of a text-primary class. -->
+            <div class="flex gap-1">
+              <UButton variant="link" size="xs" label="Select all" @click="setAllLibs(true)" />
+              <UButton variant="link" size="xs" label="None" @click="setAllLibs(false)" />
+              <UButton variant="link" size="xs" label="Refresh" @click="store.fetchLibraries()" />
             </div>
             <UButton
               :loading="librariesBusy"

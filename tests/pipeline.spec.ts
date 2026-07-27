@@ -650,3 +650,96 @@ describe('backfillSharedTitle Plex marking', () => {
     expect(markWatched).not.toHaveBeenCalled()
   })
 })
+
+// Two libraries can hold the same title under different rating_keys. Observed live:
+// House is 9809 in "TV Shows" and 9815 in "Seriale", and Plex gives BOTH copies the
+// same guid. Sharing the copy you don't play from used to match nothing at all — no
+// fan-out, no Plex, no error, just a watch that looked unshared.
+describe('processEvent share matching across library copies', () => {
+  const SHOW_GUID = 'plex://show/5d9c086c02391c001f5891b7'
+  // The episode actually played: its own key, and its show's key in "TV Shows".
+  const playedEpisode = { ...meta, grandparent_rating_key: '9809', grandparent_guid: SHOW_GUID }
+
+  async function sharedFromOtherLibrary(guid: string | undefined) {
+    const { db, pipeline } = await configured()
+    db.saveSettings({ plex_token: 'owner-tok' })
+    const alice = db.upsertMapping('alice', 'tok-alice', 1, 1, 1)
+    const bob = db.upsertMapping('bob', 'tok-bob', 1, 1, 1)
+    // Shared from the "Seriale" copy (9815), which is NOT the key the watch carries.
+    db.setSharedTitle(
+      { rating_key: '9815', media_type: 'show', plex_sync: 1, ...(guid ? { guid } : {}) },
+      [alice.id, bob.id],
+    )
+    getMetadata.mockImplementation(async () => playedEpisode)
+    return { db, pipeline }
+  }
+
+  it('fans out to a share created from the OTHER library copy, matched by guid', async () => {
+    const { pipeline } = await sharedFromOtherLibrary(SHOW_GUID)
+
+    const r = await pipeline.processEvent(input) // alice watches 9809's episode
+
+    expect(r.fanout).toBe(2)
+    expect(forwardToSeenr).toHaveBeenCalledTimes(2)
+  })
+
+  it('marks Plex for the co-watcher on a guid-matched share', async () => {
+    const { pipeline } = await sharedFromOtherLibrary(SHOW_GUID)
+
+    await pipeline.processEvent(input)
+
+    // plex_sync lives on the 9815 row; it must still be honoured for a 9809 watch.
+    expect(markWatched).toHaveBeenCalledOnce()
+    expect(markWatched).toHaveBeenCalledWith('http://plex:32400', 'tok-bob', '12345')
+  })
+
+  it('still does NOT fan out when the guid is unknown — the pre-fix behaviour', async () => {
+    // A row shared before the guid column existed and not yet backfilled: rating_key
+    // is all there is to match on, so a watch from the other copy stays unshared.
+    const { pipeline } = await sharedFromOtherLibrary(undefined)
+
+    const r = await pipeline.processEvent(input)
+
+    expect(r.fanout).toBe(1)
+    expect(markWatched).not.toHaveBeenCalled()
+  })
+
+  it('matches the exact rating_key even when no guid is stored', async () => {
+    const { db, pipeline } = await configured()
+    const alice = db.upsertMapping('alice', 'tok-alice', 1, 1, 1)
+    const bob = db.upsertMapping('bob', 'tok-bob', 1, 1, 1)
+    db.setSharedTitle({ rating_key: '9809', media_type: 'show' }, [alice.id, bob.id])
+    getMetadata.mockImplementation(async () => playedEpisode)
+
+    expect((await pipeline.processEvent(input)).fanout).toBe(2)
+  })
+
+  it('does not match a DIFFERENT title that happens to be shared', async () => {
+    const { db, pipeline } = await configured()
+    const alice = db.upsertMapping('alice', 'tok-alice', 1, 1, 1)
+    const bob = db.upsertMapping('bob', 'tok-bob', 1, 1, 1)
+    db.setSharedTitle(
+      { rating_key: '14343', media_type: 'show', guid: 'plex://show/5e160ed3e68804001e87a7b5' },
+      [alice.id, bob.id],
+    )
+    getMetadata.mockImplementation(async () => playedEpisode)
+
+    // House's guid must not collide with House of the Dragon's.
+    expect((await pipeline.processEvent(input)).fanout).toBe(1)
+  })
+
+  it('delivers once, not twice, when the SAME title is shared from both libraries', async () => {
+    const { db, pipeline } = await configured()
+    const alice = db.upsertMapping('alice', 'tok-alice', 1, 1, 1)
+    const bob = db.upsertMapping('bob', 'tok-bob', 1, 1, 1)
+    db.setSharedTitle({ rating_key: '9809', media_type: 'show', guid: SHOW_GUID }, [alice.id, bob.id])
+    db.setSharedTitle({ rating_key: '9815', media_type: 'show', guid: SHOW_GUID }, [alice.id, bob.id])
+    getMetadata.mockImplementation(async () => playedEpisode)
+
+    const r = await pipeline.processEvent(input)
+
+    // Both rows match; the recipients are the same two people and must not be doubled.
+    expect(r.fanout).toBe(2)
+    expect(forwardToSeenr).toHaveBeenCalledTimes(2)
+  })
+})

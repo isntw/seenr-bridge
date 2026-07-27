@@ -160,6 +160,10 @@ export interface SharedTitle {
    *  existed and whose lookup hasn't succeeded yet — see /api/shared's backfill. */
   section_id: string | null
   library_name: string | null
+  /** Plex's own id for the title. The same show in two libraries has two rating_keys
+   *  but ONE guid, so this is what the pipeline matches a watch against. Null until
+   *  resolved for a title shared before the column existed. */
+  guid: string | null
   plex_sync: boolean
   profiles: number[] // mapping ids
 }

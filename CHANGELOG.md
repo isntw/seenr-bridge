@@ -2,6 +2,17 @@
 
 Notable changes per release. Versions follow [semantic versioning](https://semver.org).
 
+## 2.3.1
+
+### Fixed
+
+- A shared title only matched watches from the exact library copy it was created from. Two libraries can hold the same show or film under different `rating_key`s — e.g. House as both "House" in *TV Shows* and "Dr. House" in *Seriale* — so a share created from the copy you don't play from matched nothing: no fan-out to the co-watchers, no Plex marking, and no error to explain it. Shares now match on Plex's own id for the title, which is identical across library copies, with `rating_key` kept as a fallback. Existing shares have their id filled in automatically on the next visit to the Shared page; nothing needs re-adding.
+- Dashboard rows now carry the same gold Plex badge as the Shared page, so a watch that reached Plex says so without hovering a recipient.
+
+### Known limitation
+
+- The retroactive "sync all previously watched episodes" option still searches history by the shared copy's own `rating_key`, so choosing it on a share created from a library you don't play from reports "No watched episodes found in Tautulli history" rather than finding them under the other copy.
+
 ## 2.3.0
 
 ### Added

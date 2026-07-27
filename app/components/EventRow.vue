@@ -57,11 +57,23 @@ function pretty(payload: string | null) {
   }
 }
 
+function plexOk(r: EventRecipient) {
+  return r.plex_status !== null && r.plex_status >= 200 && r.plex_status < 300
+}
+
 function recipientStatus(r: EventRecipient) {
   const seenr = r.ok ? 'checked in' : r.seenr_status ? `seenr ${r.seenr_status}` : 'failed'
   if (r.plex_status === null) return seenr
-  const plex = r.plex_status >= 200 && r.plex_status < 300 ? 'marked in Plex' : `Plex ${r.plex_status}`
-  return `${seenr} · ${plex}`
+  return `${seenr} · ${plexOk(r) ? 'marked in Plex' : `Plex ${r.plex_status}`}`
+}
+
+// Three states, not two. `ok` tracks the seenr forward alone — deliberately, so a Plex
+// hiccup can't inflate the Dashboard's failure count — but a green badge on a delivery
+// whose Plex write failed would hide it behind a tooltip nobody hovers. Warning is the
+// honest middle: seenr landed, Plex did not.
+function recipientColor(r: EventRecipient) {
+  if (!r.ok) return 'error'
+  return r.plex_status !== null && !plexOk(r) ? 'warning' : 'success'
 }
 </script>
 
@@ -96,7 +108,7 @@ function recipientStatus(r: EventRecipient) {
           <UBadge
             v-for="r in group.recipients"
             :key="r.id"
-            :color="r.ok ? 'success' : 'error'"
+            :color="recipientColor(r)"
             variant="subtle"
             size="sm"
             :leading-icon="r.ok ? 'i-lucide-check' : 'i-lucide-x'"

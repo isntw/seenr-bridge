@@ -319,17 +319,6 @@ function submit() {
               @update:model-value="(v) => toggleProfile(m.id, v === true)"
             />
           </div>
-          <UCheckbox
-            v-model="plexSync"
-            class="mt-3"
-            label="Also mark watched in Plex"
-            :disabled="!plexConnected"
-            :description="
-              plexConnected
-                ? 'Each co-watcher\'s own Plex copy is marked watched too. The person who pressed play is skipped — theirs already is.'
-                : 'Sign in with Plex under Settings first.'
-            "
-          />
           <p v-if="subject && profileIds.length === 1" class="mt-2 text-xs text-warning">
             Only one profile selected — co-watching needs at least two to be useful.
           </p>
@@ -339,9 +328,29 @@ function submit() {
           </p>
         </section>
 
+        <!-- Its own section, not another line under the profile list: sitting directly
+             beneath the checkboxes it read as a third profile named "Also mark watched
+             in Plex", and it pushed the "only one profile" warning away from what it
+             was warning about. -->
         <section :class="subject ? '' : 'pointer-events-none opacity-40'">
           <h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
-            {{ isEdit ? 'Watches that already happened' : '3 · Watches that already happened' }}
+            {{ isEdit ? 'Plex' : '3 · Plex' }}
+          </h3>
+          <UCheckbox
+            v-model="plexSync"
+            label="Also mark watched in Plex"
+            :disabled="!plexConnected"
+            :description="
+              plexConnected
+                ? 'Each co-watcher\'s own Plex copy is marked watched too. Whoever pressed play is skipped — theirs already is.'
+                : 'Connect a Plex account under Settings first.'
+            "
+          />
+        </section>
+
+        <section :class="subject ? '' : 'pointer-events-none opacity-40'">
+          <h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
+            {{ isEdit ? 'Watches that already happened' : '4 · Watches that already happened' }}
           </h3>
           <URadioGroup v-model="syncChoice" :items="syncOptions" />
         </section>

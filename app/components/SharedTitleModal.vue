@@ -91,7 +91,11 @@ const subject = computed(() => {
   return null
 })
 
-const isShow = computed(() => subject.value?.media_type === 'show')
+// Falls back to the selected tab, not just the picked title. Before anything is
+// picked `subject` is null, and reading only from it made the backfill option show
+// the movie wording ("Mark it watched for everyone now") while the TV Shows tab
+// was active.
+const isShow = computed(() => (subject.value?.media_type ?? type.value) === 'show')
 
 // Every request carries a sequence number and drops itself if a newer one has
 // started. Debounced typing keeps several searches in flight, and without this

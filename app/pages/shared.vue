@@ -160,13 +160,18 @@ async function removeTitle(ratingKey: string) {
       </p>
     </div>
 
-    <!-- Co-watching shares a watch between profiles, so it needs profiles first. -->
-    <UCard v-if="!mappings.length" :ui="{ body: 'px-5 py-8 sm:px-5 sm:py-8' }">
-      <p class="text-center text-sm text-muted">
-        Add at least one user under
-        <ULink to="/settings" class="text-default">Settings → seenr users</ULink>
-        first. Co-watching needs profiles to share to.
-      </p>
+    <!-- Co-watching shares a watch between profiles, so it needs profiles first.
+         UEmpty rather than prose containing a link: its `actions` are ButtonProps,
+         `to` included, so the sentence that told you where to go becomes the button
+         that takes you there. Stock card padding — the old override existed only to
+         centre a single line of text. -->
+    <UCard v-if="!mappings.length">
+      <UEmpty
+        icon="i-lucide-users-round"
+        title="No profiles yet"
+        description="A watch can only be shared between profiles, so add the people first."
+        :actions="[{ label: 'Add users in Settings', to: '/settings', icon: 'i-lucide-arrow-right', trailing: true }]"
+      />
     </UCard>
 
     <!-- One card with a divided list, matching the Dashboard's Recent scrobbles. -->

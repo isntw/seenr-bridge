@@ -47,7 +47,9 @@ const remaining = computed(() =>
   <div class="space-y-6">
     <!-- 2-up on phones, 4-up from sm. -->
     <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
-      <UCard v-for="t in tiles" :key="t.label" :ui="{ body: 'px-4 py-3 sm:px-5 sm:py-4' }">
+      <!-- Stock card padding. The old :ui override tightened it for the 2-up phone
+           layout, which was preference rather than need. -->
+      <UCard v-for="t in tiles" :key="t.label">
         <div class="flex items-center gap-2 text-xs uppercase tracking-wider text-muted">
           <UIcon :name="t.icon" class="size-4 text-dimmed" />
           <span class="truncate">{{ t.label }}</span>

@@ -251,7 +251,6 @@ function setOnlyNew(ratingKey: string, value: boolean) {
             :variant="type === t.value ? 'solid' : 'outline'"
             :label="t.label"
             :disabled="sharedOnly"
-            class="min-h-11"
             @click="type = t.value"
           />
         </UFieldGroup>
@@ -262,7 +261,7 @@ function setOnlyNew(ratingKey: string, value: boolean) {
             :placeholder="`Search ${type === 'show' ? 'shows' : 'movies'}…`"
             class="min-w-0 flex-1"
           />
-          <UButton type="submit" color="neutral" variant="subtle" label="Search" class="min-h-11" />
+          <UButton type="submit" color="neutral" variant="subtle" label="Search" />
         </form>
 
         <!-- UCheckbox emits 'indeterminate' as well as booleans, so v-model on a
@@ -271,7 +270,7 @@ function setOnlyNew(ratingKey: string, value: boolean) {
         <UCheckbox
           :model-value="sharedOnly"
           label="Shared only"
-          class="ml-auto min-h-11 items-center"
+          class="ml-auto items-center"
           @update:model-value="(v) => { sharedOnly = v === true }"
         />
       </div>
@@ -358,7 +357,6 @@ function setOnlyNew(ratingKey: string, value: boolean) {
                       color="neutral"
                       variant="subtle"
                       label="Sync all previous episodes"
-                      class="min-h-11"
                       :loading="busyKey === row.rating_key"
                       :disabled="busyKey !== null && busyKey !== row.rating_key"
                       @click="backfill(row.rating_key)"
@@ -367,7 +365,6 @@ function setOnlyNew(ratingKey: string, value: boolean) {
                       color="neutral"
                       variant="subtle"
                       label="Only new ones"
-                      class="min-h-11"
                       @click="setOnlyNew(row.rating_key, true)"
                     />
                   </template>
@@ -377,7 +374,6 @@ function setOnlyNew(ratingKey: string, value: boolean) {
                   color="neutral"
                   variant="subtle"
                   label="Sync now"
-                  class="min-h-11"
                   :loading="busyKey === row.rating_key"
                   :disabled="busyKey !== null && busyKey !== row.rating_key"
                   @click="backfill(row.rating_key)"
@@ -399,7 +395,6 @@ function setOnlyNew(ratingKey: string, value: boolean) {
         <UButton
           color="neutral"
           variant="subtle"
-          class="min-h-11"
           :loading="loading"
           :label="`Load more (${items.length}/${total})`"
           @click="load(items.length)"

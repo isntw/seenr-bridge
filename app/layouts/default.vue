@@ -69,7 +69,7 @@ onBeforeUnmount(() => status.stop())
       <header class="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-default bg-default/80 px-4 py-3 backdrop-blur sm:px-6">
         <div class="flex min-w-0 items-center gap-2">
           <UButton
-            class="lg:hidden min-h-11 min-w-11"
+            class="lg:hidden"
             icon="i-lucide-menu"
             color="neutral"
             variant="ghost"

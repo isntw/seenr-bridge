@@ -62,7 +62,6 @@ const remaining = computed(() =>
             variant="subtle"
             label="Refresh"
             icon="i-lucide-refresh-cw"
-            class="min-h-11"
             @click="refresh"
           />
         </div>
@@ -92,7 +91,6 @@ const remaining = computed(() =>
           <UButton
             color="neutral"
             variant="subtle"
-            class="min-h-11"
             :label="`Load more · ${remaining} older`"
             @click="limit += 25"
           />

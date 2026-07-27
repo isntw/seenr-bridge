@@ -53,7 +53,7 @@ const menuItems = computed(() => [
   <UDropdownMenu :items="menuItems">
     <!-- The old trigger was a filled pill (bg-white/5, ring-white/10), not a
          bare ghost button — `subtle` is Nuxt UI's equivalent of that. -->
-    <UButton color="neutral" variant="subtle" class="min-h-11 gap-2.5 rounded-full py-1 pl-1 pr-3">
+    <UButton color="neutral" variant="subtle" class="gap-2.5 rounded-full py-1 pl-1 pr-3">
       <!-- `text` renders the two-letter initials verbatim; `alt` would have Nuxt
            UI derive its own initials from them and show a single letter. -->
       <UAvatar

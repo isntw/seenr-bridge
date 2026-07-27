@@ -27,7 +27,20 @@ Three concrete defects drove it:
   input.
 - **Vertical rhythm matches the rest of the app**: `space-y-6`, as Dashboard uses. Settings uses
   `space-y-4` today.
-- **`min-h-11` (44px) stays the floor** for every interactive control, as it is today.
+- ~~**`min-h-11` (44px) stays the floor** for every interactive control, as it is today.~~
+  **Reversed after review — the app now uses Nuxt UI's default sizing throughout.** The 44px floor
+  was applied to buttons and to `CopyField`'s code boxes but *not* to `UInput`/`USelectMenu`, which
+  stayed at Nuxt UI's `md` (~32px). The result was three visible heights on one page and buttons that
+  refused to line up with the inputs beside them — most obviously the `Add` button in step 2, whose
+  whole row this redesign was supposed to fix. Reading the code could not reveal this; it took
+  looking at the page.
+  All 32 `min-h-11`/`min-w-11` occurrences were removed app-wide (10 files, not just Settings — a
+  partial sweep would have made Settings inconsistent with Dashboard and Shared). The trigger chips
+  are raw `<button>`s with no component defaults, so they carry
+  `px-2.5 py-1.5 text-sm gap-1.5` — verbatim Nuxt UI `md`, copied from `.nuxt/ui/button.ts`.
+  Accepted trade-off: 32px is below the 44px WCAG 2.5.5 (AAA) target-size guideline. This is a
+  login-gated LAN admin panel driven with a mouse, and internal consistency plus matching the
+  component library was judged the better call. Revisit if it ever gets real phone use.
 - **Mobile is a first-class target**, not a fallback. Every layout below is specified at both
   `lg:`+ and ~390px.
 - Approved via visual mockups in `.superpowers/brainstorm/` (gitignored). Six decisions were made;

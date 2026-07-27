@@ -11,7 +11,7 @@ defineProps<{ title: string; summary?: string }>()
 <template>
   <UCard :ui="{ body: 'p-0 sm:p-0' }">
     <UCollapsible v-model:open="open">
-      <UButton color="neutral" variant="ghost" class="w-full min-h-11 gap-2.5 px-5 py-3.5">
+      <UButton color="neutral" variant="ghost" class="w-full gap-2.5 px-5 py-3.5">
         <UIcon
           name="i-lucide-chevron-right"
           class="size-4 shrink-0 text-muted transition-transform"

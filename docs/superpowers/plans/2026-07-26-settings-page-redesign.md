@@ -14,7 +14,11 @@
 
 - **No new dependencies.** Nuxt UI v4 components already in the project plus Tailwind classes only.
 - **No feature is removed**, including the raw `rating_key` text input (it becomes the "Paste key" mode).
-- **`min-h-11` (44px) is the floor** for every interactive control, matching the current page.
+- ~~**`min-h-11` (44px) is the floor** for every interactive control, matching the current page.~~
+  **Reversed after implementation — see the spec's Constraints section.** The floor was on buttons but
+  not on inputs, so nothing lined up; all 32 occurrences were swept app-wide and everything now uses
+  Nuxt UI's default sizing. Task steps below still show `min-h-11` in their code blocks; treat those
+  as historical, not as instructions.
 - **Page rhythm is `space-y-6`**, replacing today's `space-y-4`, to match `app/pages/dashboard.vue`.
 - **`server/utils/*` must use explicit relative imports, never Nitro auto-imports.** `server/api/*` deliberately DOES use auto-imports (`defineEventHandler`, `getQuery`, `createError` are global there). Mixing styles inside `server/utils/` breaks the spec suite, which imports those modules directly.
 - **Before using any Nuxt UI component for the first time, grep `.nuxt/components.d.ts` for it.** A misspelled component name passes both `typecheck` and `build`, then renders nothing. Verified present for this work: `UFieldGroup`, `UCollapsible`, `USwitch`, `USelectMenu`, `UFormField`. **`UButtonGroup` does not exist in v4 — use `UFieldGroup`.**

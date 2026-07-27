@@ -263,9 +263,10 @@ async function runTest(dryRun: boolean) {
             {{ hookStatus === 'pending' ? 'checking…' : hookStatus === 'ok' ? 'webhook active' : 'no webhook' }}
           </span>
         </span>
-        <!-- The master kill switch, promoted out of Advanced. min-h-11 on the
-             label keeps the whole hit area at the touch floor. -->
-        <label class="flex min-h-11 items-center gap-2">
+        <!-- The master kill switch, promoted out of Advanced. Wrapping it in a
+             <label> makes the word "Forwarding" part of the hit area, and gives
+             the switch a programmatic accessible name. -->
+        <label class="flex items-center gap-2">
           <USwitch
             :model-value="store.settings.forward_enabled"
             :disabled="forwardingBusy"
@@ -305,13 +306,13 @@ async function runTest(dryRun: boolean) {
             color="neutral"
             variant="subtle"
             label="Test connection"
-            class="min-h-11 justify-center order-2 sm:order-1"
+            class="justify-center order-2 sm:order-1"
             @click="testConnection"
           />
           <UButton
             :loading="saving"
             label="Save"
-            class="min-h-11 justify-center order-1 sm:order-2"
+            class="justify-center order-1 sm:order-2"
             @click="saveConnection"
           />
         </div>
@@ -326,13 +327,17 @@ async function runTest(dryRun: boolean) {
           <!-- Chips, not checkboxes: the `recommended` badge used to be passed as
                #description to the Watched checkbox, which made that one row
                taller than its four siblings. The badge now folds into the
-               selected state and the recommendation moved to the line above. -->
+               selected state and the recommendation moved to the line above.
+
+               `px-2.5 py-1.5 text-sm gap-1.5` is verbatim Nuxt UI's `md` button
+               size (see .nuxt/ui/button.ts) — this is a raw <button> with no
+               component defaults of its own, and it sits beside real UButtons. -->
           <button
             v-for="t in TRIGGERS"
             :key="t.key"
             type="button"
             :aria-pressed="isTriggerSelected(t.key)"
-            class="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-3.5 text-sm ring-1 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-400"
+            class="inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm ring-1 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-400"
             :class="isTriggerSelected(t.key)
               ? 'bg-primary-600/20 text-primary-200 ring-primary-400/40'
               : 'bg-default text-muted ring-default hover:text-default'"
@@ -346,7 +351,7 @@ async function runTest(dryRun: boolean) {
           <UButton
             :loading="syncing"
             label="Sync to Tautulli"
-            class="min-h-11 w-full justify-center sm:w-auto"
+            class="w-full justify-center sm:w-auto"
             @click="runSync"
           />
         </div>
@@ -356,7 +361,7 @@ async function runTest(dryRun: boolean) {
              card background, ring or radius — unlike Advanced and Test, which
              use DisclosureCard. -->
         <UCollapsible v-model:open="manual">
-          <UButton color="neutral" variant="ghost" class="w-full min-h-11 justify-start gap-2.5 px-0">
+          <UButton color="neutral" variant="ghost" class="w-full justify-start gap-2.5 px-0">
             <UIcon
               name="i-lucide-chevron-right"
               class="size-4 shrink-0 text-muted transition-transform"
@@ -406,7 +411,7 @@ async function runTest(dryRun: boolean) {
             color="neutral"
             variant="subtle"
             label="Configure"
-            class="min-h-11 self-start sm:self-auto"
+            class="self-start sm:self-auto"
             @click="edit = { ...m }"
           />
         </div>
@@ -434,7 +439,7 @@ async function runTest(dryRun: boolean) {
         <UFormField label="seenr token">
           <UInput v-model="newToken" placeholder="9%7CyourSeenrToken" class="w-full" />
         </UFormField>
-        <UButton label="Add" icon="i-lucide-plus" class="min-h-11 w-full justify-center sm:w-auto" @click="addMapping" />
+        <UButton label="Add" icon="i-lucide-plus" class="w-full justify-center sm:w-auto" @click="addMapping" />
       </div>
       <p class="mt-2 text-xs text-dimmed">
         Token is the part after <code class="text-default">/scrobble/plex/</code> in your seenr URL.
@@ -456,7 +461,7 @@ async function runTest(dryRun: boolean) {
       <UFormField label="Bridge public URL" help="blank = auto-detect; set only behind a reverse proxy">
         <UInput v-model="store.settings.bridge_url" placeholder="https://bridge.example.com" class="w-full" />
       </UFormField>
-      <UButton label="Save" class="min-h-11" @click="saveAdvanced" />
+      <UButton label="Save" @click="saveAdvanced" />
     </DisclosureCard>
 
     <DisclosureCard v-model:open="testPanel" title="Test a scrobble" summary="send a rating_key through the pipeline">
@@ -494,7 +499,7 @@ async function runTest(dryRun: boolean) {
         <UButton
           icon="i-lucide-eye"
           label="Preview"
-          class="min-h-11 justify-center"
+          class="justify-center"
           :loading="previewBusy"
           :disabled="sendBusy"
           @click="runTest(true)"
@@ -504,7 +509,7 @@ async function runTest(dryRun: boolean) {
           variant="subtle"
           icon="i-lucide-send"
           label="Send for real"
-          class="min-h-11 justify-center"
+          class="justify-center"
           :loading="sendBusy"
           :disabled="previewBusy"
           @click="runTest(false)"
@@ -582,10 +587,10 @@ async function runTest(dryRun: boolean) {
       </template>
       <template #footer>
         <div class="flex w-full flex-wrap justify-between gap-3">
-          <UButton color="error" variant="ghost" label="Remove" class="min-h-11" @click="removeEdit" />
+          <UButton color="error" variant="ghost" label="Remove" @click="removeEdit" />
           <div class="flex gap-3">
-            <UButton color="neutral" variant="subtle" label="Cancel" class="min-h-11" @click="edit = null" />
-            <UButton label="Save" class="min-h-11" @click="saveEdit" />
+            <UButton color="neutral" variant="subtle" label="Cancel" @click="edit = null" />
+            <UButton label="Save" @click="saveEdit" />
           </div>
         </div>
       </template>

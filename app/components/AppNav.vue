@@ -24,7 +24,7 @@ const isActive = (to: string) => route.path === to
       color="neutral"
       variant="ghost"
       size="lg"
-      class="justify-start min-h-11"
+      class="justify-start"
       :class="isActive(item.to)
         ? 'bg-primary-500/15 text-highlighted ring ring-inset ring-primary-500/25'
         : 'text-muted hover:text-highlighted'"

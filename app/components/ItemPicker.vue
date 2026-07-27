@@ -212,7 +212,6 @@ watch(movie, (m) => { model.value = m ? m.value : '' })
         :variant="mode === m.value ? 'subtle' : 'outline'"
         :aria-pressed="mode === m.value"
         :label="m.label"
-        class="min-h-11"
         @click="pick(m.value)"
       />
     </UFieldGroup>

@@ -88,7 +88,6 @@ async function submit() {
             :loading="busy"
             :label="isSetup ? 'Create account' : 'Sign in'"
             block
-            class="min-h-11"
           />
         </form>
       </UCard>

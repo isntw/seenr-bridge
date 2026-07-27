@@ -1,0 +1,79 @@
+name: pr checks
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+
+  release-metadata:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Releasing is driven by shared/version.ts on merge, so a PR that changes the
+      # app without bumping it ships code under a version that is already released.
+      # Docs- and CI-only changes are exempt: forcing a release for them would mean a
+      # version per PR, which is what the "one bump per release" rule exists to avoid.
+      - name: Version and changelog
+        run: |
+          set -euo pipefail
+          base="origin/${{ github.base_ref }}"
+
+          changed=$(git diff --name-only "$base"...HEAD)
+          echo "changed files:"; echo "$changed" | sed 's/^/  /'
+
+          # Anything outside these paths is app code and needs a release.
+          app_changed=$(echo "$changed" | grep -vE '^(\.github/|docs/|CHANGELOG\.md$|README\.md$|CLAUDE\.md$|\.gitignore$)' || true)
+          if [ -z "$app_changed" ]; then
+            echo "::notice::docs/CI only — no version bump required"
+            exit 0
+          fi
+
+          read_version() { sed -n "s/.*VERSION = '\([0-9]*\.[0-9]*\.[0-9]*\)'.*/\1/p" "$1"; }
+          new=$(read_version shared/version.ts)
+          old=$(git show "$base:shared/version.ts" | sed -n "s/.*VERSION = '\([0-9]*\.[0-9]*\.[0-9]*\)'.*/\1/p")
+          echo "version: $old (base) -> $new (head)"
+
+          if [ "$new" = "$old" ]; then
+            echo "::error file=shared/version.ts::app code changed but VERSION is still $old — bump it, or the merge ships under a released version"
+            exit 1
+          fi
+
+          if git ls-remote --exit-code --tags origin "refs/tags/v$new" >/dev/null 2>&1; then
+            echo "::error file=shared/version.ts::v$new is already tagged — pick a higher version"
+            exit 1
+          fi
+
+          if [ ! -f CHANGELOG.md ]; then
+            echo "::error::CHANGELOG.md is missing"
+            exit 1
+          fi
+          section=$(awk -v v="$new" '
+            $0 ~ "^## +\\[?" v "\\]?" { on = 1; next }
+            on && /^## / { exit }
+            on { print }
+          ' CHANGELOG.md | grep -c . || true)
+          if [ "$section" -eq 0 ]; then
+            echo "::error file=CHANGELOG.md::no '## $new' section — the release notes come from it"
+            exit 1
+          fi
+
+          echo "::notice::v$new with a $section-line changelog section"

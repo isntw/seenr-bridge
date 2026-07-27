@@ -173,10 +173,6 @@ Or in Docker: `docker compose -f docker-compose.dev.yml up -d`
 
 Working on the code? `CLAUDE.md` documents the conventions and the non-obvious traps.
 
-## Versioning
-
-The version is defined once in `shared/version.ts`, served at `/api/version`, and shown in the sidebar and login screen. Bump it there on release, along with the badge above.
-
 ## Stack
 
 Nuxt 4 + Vue 3 + Nuxt UI + Pinia (client) · Nitro + better-sqlite3 + TypeScript (server) · Docker.

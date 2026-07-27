@@ -638,9 +638,8 @@ async function runTest(dryRun: boolean) {
 
     <SetupStep :n="3" title="Plex" badge="optional" hint="mark co-watched titles watched in Plex too">
       <p class="text-sm text-muted">
-        Plex keeps watched state per account, so marking someone else's copy needs their
-        access — not yours. Connect once as the server owner and the bridge picks up
-        everyone you share with.
+        Sign in once as the server owner. The bridge can then mark a shared title watched in
+        each co-watcher's own Plex, not just in seenr.
       </p>
 
       <UAlert v-if="plexError" color="error" variant="subtle" class="mt-3" :description="plexError" />

@@ -2,6 +2,21 @@
 
 Notable changes per release. Versions follow [semantic versioning](https://semver.org).
 
+## 2.3.0
+
+### Added
+
+- A shared title can now also be marked watched **in Plex** for its co-watching profiles, not just checked in to seenr. Tick "Also mark watched in Plex" when adding or editing a shared title. Whoever actually pressed play is skipped — their copy is already watched — and the retroactive "sync all previously watched episodes" option marks Plex too.
+- Settings gained a Plex step. Sign in once as the server owner and the bridge finds each co-watcher's own Plex access by itself, including profiles you add later. It reports how many of your mapped users it can act for, so a gap is visible before it matters rather than as a silent no-op. Anyone it cannot find — typically a Plex Home profile, which Plex does not list — can be given a token by hand under Configure.
+- Dashboard event rows show whether the Plex write landed alongside the seenr result.
+
+### Notes
+
+- Watched state in Plex belongs to an account rather than to an item, so marking a co-watcher's copy requires that co-watcher's own access. Discovered tokens are held in memory only and never written to the database.
+- Existing shared titles default to **off**: an upgrade writes to nobody's Plex until you opt a title in.
+- A failed Plex write is recorded on the event row without marking the delivery failed. The Dashboard's failure count continues to mean "the seenr forward failed", which is what it has always meant.
+- No new configuration is required. The Plex server address is derived from the Tautulli connection you already have.
+
 ## 2.2.3
 
 ### Changed

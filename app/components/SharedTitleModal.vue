@@ -20,6 +20,7 @@ const props = defineProps<{
   sharedKeys?: string[]
   row?: SharedRow | null
   busy?: boolean
+  plexConnected?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -44,6 +45,7 @@ const libError = ref<string | null>(null)
 
 const picked = ref<LibraryItem | null>(null)
 const profileIds = ref<number[]>([])
+const plexSync = ref(false)
 
 // Strings, not booleans: this decides whether a retroactive mass-scrobble fires, and
 // a stringified `"false"` would be truthy.
@@ -151,6 +153,7 @@ function reset() {
     void load(0)
   }
 
+  plexSync.value = isEdit.value ? !!props.row?.plex_sync : false
   syncChoice.value = 'new'
 }
 
@@ -195,6 +198,7 @@ function submit() {
     library_name: picked.value?.library_name,
     profiles: [...profileIds.value],
     syncPrevious: syncChoice.value === 'all',
+    plex_sync: plexSync.value,
   })
 }
 </script>
@@ -315,6 +319,17 @@ function submit() {
               @update:model-value="(v) => toggleProfile(m.id, v === true)"
             />
           </div>
+          <UCheckbox
+            v-model="plexSync"
+            class="mt-3"
+            label="Also mark watched in Plex"
+            :disabled="!plexConnected"
+            :description="
+              plexConnected
+                ? 'Each co-watcher\'s own Plex copy is marked watched too. The person who pressed play is skipped — theirs already is.'
+                : 'Sign in with Plex under Settings first.'
+            "
+          />
           <p v-if="subject && profileIds.length === 1" class="mt-2 text-xs text-warning">
             Only one profile selected — co-watching needs at least two to be useful.
           </p>

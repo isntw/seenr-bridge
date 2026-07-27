@@ -58,8 +58,10 @@ function pretty(payload: string | null) {
 }
 
 function recipientStatus(r: EventRecipient) {
-  if (r.ok) return 'checked in'
-  return r.seenr_status ? `seenr ${r.seenr_status}` : 'failed'
+  const seenr = r.ok ? 'checked in' : r.seenr_status ? `seenr ${r.seenr_status}` : 'failed'
+  if (r.plex_status === null) return seenr
+  const plex = r.plex_status >= 200 && r.plex_status < 300 ? 'marked in Plex' : `Plex ${r.plex_status}`
+  return `${seenr} · ${plex}`
 }
 </script>
 
@@ -98,6 +100,7 @@ function recipientStatus(r: EventRecipient) {
             variant="subtle"
             size="sm"
             :leading-icon="r.ok ? 'i-lucide-check' : 'i-lucide-x'"
+            :trailing-icon="r.plex_status !== null ? 'i-lucide-clapperboard' : undefined"
             :label="r.username ?? 'unknown'"
             :title="`${r.username ?? 'unknown'}: ${recipientStatus(r)}`"
           />

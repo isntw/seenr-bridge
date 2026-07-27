@@ -133,4 +133,14 @@ describe('groupEvents', () => {
     expect(out).toHaveLength(1)
     expect(out[0]!.recipients).toHaveLength(2)
   })
+
+  it('carries plex_status onto each recipient', () => {
+    const out = groupEvents([
+      ev({ id: 1, username: 'alice', plex_status: null }),
+      ev({ id: 2, username: 'bob', plex_status: 200 }),
+    ])
+
+    expect(out).toHaveLength(1) // same ts/rating_key/event → one group
+    expect(out[0]!.recipients.map((r) => r.plex_status)).toEqual([null, 200])
+  })
 })

@@ -4,7 +4,13 @@ A small self-hosted service that makes **Tautulli → [seenr](https://seenr.app)
 
 ![version](https://img.shields.io/badge/version-2.0.0-8b5cf6)
 
-![Seenr Bridge dashboard](docs/dashboard.png)
+![The dashboard — recent scrobbles, with co-watched titles collapsed into one row per watch](docs/dashboard.png)
+
+*Dashboard — one row per watch. A co-watched title shows every profile it reached.*
+
+![The Shared page — titles marked as co-watched and who they are shared with](docs/shared.png)
+
+*Shared — titles you watch together, and who each one checks in for.*
 
 ## Why it exists
 
@@ -105,8 +111,6 @@ That's it — play something past the watched threshold and it appears on the Da
 ## Co-watching (Shared)
 
 The **Shared** page is for titles more than one person watches together. Add a title, tick who watches it, and a watch by any assigned profile checks in for all of them.
-
-![The Shared page](docs/shared.png)
 
 - **Add title** opens a picker — search your TV or movie library, tick the profiles, and choose what to do about watches that already happened: sync them all retroactively, or start from now.
 - Clicking a row opens the same modal to change who it's shared with, re-run a retroactive sync, or remove it.

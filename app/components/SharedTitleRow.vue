@@ -42,6 +42,21 @@ function assigned(mappings: Mapping[], profiles: number[]) {
           size="sm"
           :label="row.isShow ? 'show' : 'movie'"
         />
+        <!-- Plex's own gold rather than a theme colour, matching the sign-in button:
+             this badge means "writes outside the bridge", so it should not blend in
+             with the show/movie and profile badges around it. -->
+        <UBadge
+          v-if="row.plex_sync"
+          variant="subtle"
+          size="sm"
+          class="bg-[#EBAF00]/10 text-[#EBAF00] ring-[#EBAF00]/30"
+          title="Also marked watched in each co-watcher's own Plex"
+        >
+          <svg viewBox="0 0 32 32" class="size-3 shrink-0" aria-hidden="true">
+            <path fill="currentColor" d="M15.527 0H6.24l10.239 16L6.24 32h9.287L25.76 16z" />
+          </svg>
+          Plex
+        </UBadge>
       </div>
 
       <div v-if="row.library_name" class="mt-1 truncate text-xs text-dimmed">

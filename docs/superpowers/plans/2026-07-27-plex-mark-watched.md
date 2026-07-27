@@ -598,8 +598,14 @@ git commit -m "feat(plex): add server discovery and the /:/scrobble mark-watched
 - Produces:
   - `parseSharedServers(xml: string): Map<string, string>` (lowercased username → token)
   - `getSharedTokens(machineId: string, ownerToken: string): Promise<Map<string, string>>`
+  - `getPlexAccount(ownerToken: string): Promise<{ username: string }>`
   - `resolvePlexToken(username: string, override: string, machineId: string, ownerToken: string): Promise<string | null>`
   - `resetPlexTokenCache(): void`
+
+**Verified against the live server (Task 0), so build to this, not to guesswork:**
+- `shared_servers` returned all 10 shared users **with** an `accessToken` — auto-discovery is the primary path, as designed, and no Plex Home `switch` path is needed for the current users.
+- **The signed-in owner (`isntw`) is NOT in `shared_servers`** — you do not share a server with yourself — yet is a mapped bridge user and a co-watcher. `resolvePlexToken` must therefore return the owner's own token for that username, or the bridge reports "no Plex token" for a token it is holding. This is why `getPlexAccount` exists. It is the one thing the spike changed about this task.
+- The account is a Plex Home admin (`homeSize: 2`), so Home profiles do exist on this server. None are currently mapped in the bridge, so the manual override remains their fallback and no `switch` implementation is in scope.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -664,28 +670,84 @@ describe('getSharedTokens', () => {
   })
 })
 
+describe('getPlexAccount', () => {
+  it('returns the username of the account the token belongs to', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: 9566164, username: 'isntw', email: 'owner@example.com' }),
+    } as unknown as Response)
+
+    await expect(getPlexAccount('owner-tok')).resolves.toEqual({ username: 'isntw' })
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('https://plex.tv/api/v2/user')
+    expect((init.headers as Record<string, string>)['X-Plex-Token']).toBe('owner-tok')
+  })
+
+  it('throws on an HTTP error from plex.tv', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 401 } as unknown as Response)
+
+    await expect(getPlexAccount('bad')).rejects.toThrow('plex.tv HTTP 401')
+  })
+})
+
 describe('resolvePlexToken', () => {
   beforeEach(() => resetPlexTokenCache())
 
-  function sharedServersReply() {
-    fetchMock.mockResolvedValue({ ok: true, text: async () => SHARED_SERVERS_XML } as unknown as Response)
+  // resolvePlexToken makes TWO plex.tv calls, so the stub dispatches on URL rather
+  // than answering everything with the same body.
+  function plexTvReplies(ownerUsername = 'isntw') {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (String(url).includes('/api/v2/user'))
+        return { ok: true, json: async () => ({ username: ownerUsername }) } as unknown as Response
+      return { ok: true, text: async () => SHARED_SERVERS_XML } as unknown as Response
+    })
   }
 
   it('prefers a manual override without calling plex.tv at all', async () => {
-    sharedServersReply()
+    plexTvReplies()
 
     await expect(resolvePlexToken('ana', 'manual-tok', 'm', 'owner')).resolves.toBe('manual-tok')
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('discovers a token by username, case-insensitively', async () => {
-    sharedServersReply()
+    plexTvReplies()
 
     await expect(resolvePlexToken('ANA', '', 'm', 'owner')).resolves.toBe('ana-tok')
   })
 
+  // The owner is absent from shared_servers by definition, and is very often a
+  // co-watcher. Without this they would be reported as having no token while the
+  // bridge holds theirs in settings.
+  it('returns the owner token when the username IS the signed-in account', async () => {
+    plexTvReplies('isntw')
+
+    await expect(resolvePlexToken('isntw', '', 'm', 'owner-tok')).resolves.toBe('owner-tok')
+  })
+
+  it('matches the owner case-insensitively too', async () => {
+    plexTvReplies('isntw')
+
+    await expect(resolvePlexToken('ISNTW', '', 'm', 'owner-tok')).resolves.toBe('owner-tok')
+  })
+
+  it('still prefers an explicit override over the owner token', async () => {
+    plexTvReplies('isntw')
+
+    await expect(resolvePlexToken('isntw', 'manual', 'm', 'owner-tok')).resolves.toBe('manual')
+  })
+
+  it('does not hand the owner token to a user who merely has no share', async () => {
+    plexTvReplies('isntw')
+
+    // 'nobody' is neither the owner nor in shared_servers: null, never a fallback to
+    // the owner's token, which would mark the WRONG person's copy watched.
+    await expect(resolvePlexToken('nobody', '', 'm', 'owner-tok')).resolves.toBeNull()
+  })
+
   it('returns null for a user plex.tv does not list', async () => {
-    sharedServersReply()
+    plexTvReplies()
 
     await expect(resolvePlexToken('nobody', '', 'm', 'owner')).resolves.toBeNull()
   })
@@ -695,23 +757,24 @@ describe('resolvePlexToken', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('caches the lookup across users, so a fan-out costs one plex.tv call', async () => {
-    sharedServersReply()
+  it('caches both lookups across users, so a fan-out costs two plex.tv calls', async () => {
+    plexTvReplies()
 
     await resolvePlexToken('ana', '', 'm', 'owner')
     await resolvePlexToken('mihai', '', 'm', 'owner')
 
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    // One /api/v2/user + one shared_servers, for the pair — not per user.
+    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
   it('re-fetches after the cache is reset', async () => {
-    sharedServersReply()
+    plexTvReplies()
 
     await resolvePlexToken('ana', '', 'm', 'owner')
     resetPlexTokenCache()
     await resolvePlexToken('ana', '', 'm', 'owner')
 
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock).toHaveBeenCalledTimes(4)
   })
 })
 ```
@@ -756,21 +819,40 @@ export async function getSharedTokens(
   return parseSharedServers(await res.text())
 }
 
+/** The username of the account a token belongs to. Needed because the OWNER never
+ *  appears in shared_servers — you do not share a server with yourself — so without
+ *  this the owner is indistinguishable from a user who has no token at all. */
+export async function getPlexAccount(ownerToken: string): Promise<{ username: string }> {
+  const res = await fetch(`${PLEX_TV}/api/v2/user`, {
+    headers: { accept: 'application/json', 'X-Plex-Token': ownerToken },
+  })
+  if (!res.ok) throw new Error(`plex.tv HTTP ${res.status}`)
+  const u = (await res.json()) as { username?: string }
+  return { username: String(u?.username ?? '') }
+}
+
 // Discovered tokens are cached IN MEMORY and never written to SQLite: they are other
 // people's Plex credentials, and the only thing a restart costs is one plex.tv call.
 // Same shape as the library-refresh cooldown in tautulli.ts.
 const TOKEN_TTL_MS = 10 * 60_000
-let tokenCache: { at: number; tokens: Map<string, string> } | null = null
+let tokenCache: { at: number; owner: string; tokens: Map<string, string> } | null = null
 
 /** Test seam only — module state would otherwise leak between specs. */
 export function resetPlexTokenCache(): void {
   tokenCache = null
 }
 
-/** The Plex token to act as `username`, in precedence order: the operator's manual
- *  override, then the discovery cache, then one plex.tv lookup.
+/** The Plex token to act as `username`, in precedence order:
+ *    1. the operator's manual override
+ *    2. the owner's own token, when `username` IS the signed-in account
+ *    3. the discovery cache / one plex.tv lookup
  *
- *  Returns null rather than throwing when the user simply has no token — that is a
+ *  Step 2 is not a nicety. shared_servers lists who the server is shared WITH, so the
+ *  owner is absent from it by definition — and the owner is very often one of the
+ *  co-watchers. Without this the bridge would report "No Plex token for <owner>" while
+ *  holding that exact token in settings.
+ *
+ *  Returns null rather than throwing when the user genuinely has no token — that is a
  *  recordable skip ("no Plex token for Ana"), not a failure of the bridge. */
 export async function resolvePlexToken(
   username: string,
@@ -782,9 +864,18 @@ export async function resolvePlexToken(
   if (!ownerToken) return null
 
   if (!tokenCache || Date.now() - tokenCache.at > TOKEN_TTL_MS) {
-    tokenCache = { at: Date.now(), tokens: await getSharedTokens(machineId, ownerToken) }
+    // Both lookups share one TTL: they are refreshed together or not at all, so the
+    // owner's name can never go stale against the token map it is compared with.
+    const [account, tokens] = await Promise.all([
+      getPlexAccount(ownerToken),
+      getSharedTokens(machineId, ownerToken),
+    ])
+    tokenCache = { at: Date.now(), owner: account.username.toLowerCase(), tokens }
   }
-  return tokenCache.tokens.get(username.toLowerCase()) ?? null
+
+  const wanted = username.toLowerCase()
+  if (tokenCache.owner && wanted === tokenCache.owner) return ownerToken
+  return tokenCache.tokens.get(wanted) ?? null
 }
 ```
 
@@ -1464,7 +1555,7 @@ export default defineEventHandler(async (event) => {
 
 ```typescript
 import { getSettings, listMappings } from '../../utils/db'
-import { getPlexServer, getSharedTokens } from '../../utils/plex'
+import { getPlexServer, getSharedTokens, getPlexAccount } from '../../utils/plex'
 import type { PlexLinkStatus } from '../../../shared/types'
 
 // Which mapped users the bridge can actually act as. Surfaced in Settings so a
@@ -1476,9 +1567,16 @@ export default defineEventHandler(async (): Promise<PlexLinkStatus> => {
   const mappings = listMappings()
   try {
     const { machineId } = await getPlexServer(s.tautulli_url, s.tautulli_apikey)
-    const tokens = await getSharedTokens(machineId, s.plex_token)
+    const [tokens, account] = await Promise.all([
+      getSharedTokens(machineId, s.plex_token),
+      getPlexAccount(s.plex_token),
+    ])
+    const owner = account.username.toLowerCase()
+    // The owner is never in shared_servers, but the bridge holds their token — so they
+    // count as matched. Mirrors resolvePlexToken's precedence exactly; if the two ever
+    // disagree, Settings reports a state the pipeline does not act on.
     const has = (username: string, override: string) =>
-      !!override || tokens.has(username.toLowerCase())
+      !!override || username.toLowerCase() === owner || tokens.has(username.toLowerCase())
 
     return {
       connected: true,

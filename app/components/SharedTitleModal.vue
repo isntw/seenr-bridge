@@ -3,14 +3,6 @@ import type { LibraryItem, Mapping } from '../../shared/types'
 import type { SharedRow, SharedTitlePayload } from '../utils/shared-row'
 import { apiErrorMessage } from '../../shared/errors'
 
-// One modal, two modes. `add` needs a title picker; `edit` already has its title
-// and gains a Remove action. Everything else — the profile checklist, the
-// retroactive-sync choice, the footer — is identical, which is why this isn't two
-// components: the shared surface is most of it.
-//
-// /api/tautulli/library answers ok:false (+ error) instead of throwing, so a
-// Tautulli problem shows inline while the modal stays usable. Endpoint-local
-// envelope, not part of the shared wire contract.
 interface LibraryPage {
   ok: boolean
   items: LibraryItem[]
@@ -25,10 +17,7 @@ const open = defineModel<boolean>('open', { default: false })
 const props = defineProps<{
   mode: 'add' | 'edit'
   mappings: Mapping[]
-  /** rating_keys already co-watched. In `add` these are dimmed and unselectable
-   *  so Add can never quietly mean edit. Unused in `edit`. */
   sharedKeys?: string[]
-  /** The row being edited. Required when mode is 'edit'. */
   row?: SharedRow | null
   busy?: boolean
 }>()
@@ -56,19 +45,13 @@ const libError = ref<string | null>(null)
 const picked = ref<LibraryItem | null>(null)
 const profileIds = ref<number[]>([])
 
-// String values, not booleans, even though the payload carries a boolean. This
-// radio decides whether a retroactive mass-scrobble fires, and a value that came
-// back stringified would make `"false"` truthy — silently backfilling when the
-// user asked for "new watches only". Neither Nuxt UI nor reka-ui coerces today,
-// but the failure mode is bad enough that it shouldn't depend on that.
+// Strings, not booleans: this decides whether a retroactive mass-scrobble fires, and
+// a stringified `"false"` would be truthy.
 type SyncChoice = 'new' | 'all'
 const syncChoice = ref<SyncChoice>('new')
 
 const isEdit = computed(() => props.mode === 'edit')
 
-// In edit mode the title is fixed and comes from the row; in add mode it's
-// whatever the picker has selected. Both collapse to one shape so the template
-// and the payload don't branch.
 const subject = computed(() => {
   if (isEdit.value && props.row) {
     return {
@@ -91,9 +74,6 @@ const subject = computed(() => {
   return null
 })
 
-// "2021 · movie · Anime Movies" reads as a stutter — the library name already says
-// what kind of thing it is. So prefer the library and fall back to the media type,
-// which is all edit mode has: a SharedRow carries no library.
 const subjectMeta = computed(() => {
   const s = subject.value
   if (!s) return ''
@@ -101,15 +81,8 @@ const subjectMeta = computed(() => {
   return [s.year, library || s.media_type].filter(Boolean).join(' · ')
 })
 
-// Falls back to the selected tab, not just the picked title. Before anything is
-// picked `subject` is null, and reading only from it made the backfill option show
-// the movie wording ("Mark it watched for everyone now") while the TV Shows tab
-// was active.
 const isShow = computed(() => (subject.value?.media_type ?? type.value) === 'show')
 
-// Every request carries a sequence number and drops itself if a newer one has
-// started. Debounced typing keeps several searches in flight, and without this
-// the slowest reply wins and the list stops matching the box.
 let seq = 0
 let timer: ReturnType<typeof setTimeout> | undefined
 
@@ -170,26 +143,17 @@ function reset() {
   total.value = 0
 
   if (isEdit.value) {
-    // Start from what the title already has, so Save with no changes is a no-op.
     profileIds.value = [...(props.row?.profiles ?? [])]
     type.value = props.row?.media_type === 'movie' ? 'movie' : 'show'
   } else {
-    // Co-watching means "we watch this together", so everyone is the useful
-    // default and unticking is the exception.
     profileIds.value = props.mappings.map((m) => m.id)
     type.value = 'show'
     void load(0)
   }
 
-  // Always 'new', in both modes. A retroactive backfill can scrobble hundreds of
-  // episodes to every assigned profile and there is no undo, so it has to be a
-  // choice the operator makes deliberately rather than the default they get for
-  // pressing Add.
   syncChoice.value = 'new'
 }
 
-// Nothing is fetched until the modal opens, and never in edit mode — the row
-// already carries its title, year and art.
 watch(open, (isOpen) => {
   if (isOpen) reset()
   else clearTimeout(timer)
@@ -227,8 +191,6 @@ function submit() {
   if (!s || !profileIds.value.length) return
   emit('submit', {
     ...s,
-    // Only the add flow has these; on edit they're omitted and the server keeps
-    // the stored values rather than being handed nulls.
     section_id: picked.value?.section_id,
     library_name: picked.value?.library_name,
     profiles: [...profileIds.value],
@@ -246,17 +208,12 @@ function submit() {
   >
     <template #body>
       <div class="space-y-5">
-        <!-- 1 · title — picker when adding, fixed summary when editing --------- -->
         <section>
           <h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
             {{ isEdit ? 'Title' : '1 · Title' }}
           </h3>
 
           <template v-if="!isEdit && !picked">
-            <!-- Stacked, not side by side: a horizontal UTabs list is w-full with
-                 equally-grown triggers, so sharing a row with the search box would
-                 need a width override to look right. Stacking is what the stock
-                 component wants. -->
             <div class="space-y-2">
               <UTabs v-model="type" :items="MEDIA_TYPES" :content="false" aria-label="Media type" />
               <UInput
@@ -271,8 +228,6 @@ function submit() {
             <UAlert v-if="libError" color="error" variant="subtle" class="mt-2" :description="libError" />
 
             <div class="mt-2 max-h-56 overflow-y-auto rounded-lg ring-1 ring-default">
-              <!-- xs + naked so it stays proportionate to a 224px-tall list; the
-                   default size is built for a whole empty page. -->
               <UEmpty
                 v-if="!items.length && !loading"
                 variant="naked"
@@ -281,9 +236,6 @@ function submit() {
                 :title="search.trim() ? `Nothing matching “${search.trim()}”` : 'No titles in the selected libraries'"
               />
               <div v-else class="divide-y divide-muted">
-                <!-- Props only: UButton's ghost hover and its own disabled dimming,
-                     which is what `already shared` rows relied on a hand-written
-                     disabled:opacity for. -->
                 <UButton
                   v-for="i in items"
                   :key="i.rating_key"
@@ -301,8 +253,6 @@ function submit() {
                     class="h-9 w-6 shrink-0 rounded-sm object-cover ring-1 ring-default"
                   >
                   <div v-else class="h-9 w-6 shrink-0 rounded-sm bg-elevated ring-1 ring-default" />
-                  <!-- text-left for the same reason as the list rows: the UA
-                       stylesheet centres text inside a <button>. -->
                   <span class="min-w-0 flex-1 text-left">
                     <span class="block truncate text-sm text-default">{{ i.title }}</span>
                     <span v-if="i.library_name" class="block truncate text-xs text-dimmed">
@@ -352,15 +302,11 @@ function submit() {
           </div>
         </section>
 
-        <!-- 2 · profiles ---------------------------------------------------- -->
         <section :class="subject ? '' : 'pointer-events-none opacity-40'">
           <h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
             {{ isEdit ? 'Shared with' : '2 · Share with' }}
           </h3>
           <div class="space-y-1">
-            <!-- Plain label, so the checkbox uses UCheckbox's own typography rather
-                 than a nested span — and no initials avatar in front of a name the
-                 row already spells out. -->
             <UCheckbox
               v-for="m in props.mappings"
               :key="m.id"
@@ -378,7 +324,6 @@ function submit() {
           </p>
         </section>
 
-        <!-- 3 · backfill ---------------------------------------------------- -->
         <section :class="subject ? '' : 'pointer-events-none opacity-40'">
           <h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
             {{ isEdit ? 'Watches that already happened' : '3 · Watches that already happened' }}

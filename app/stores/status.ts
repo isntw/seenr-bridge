@@ -21,8 +21,6 @@ export const useStatusStore = defineStore('status', () => {
     }
   }
 
-  // Reference-counted so the layout and the Settings page can both depend on
-  // the poll without ever running two intervals.
   function start() {
     subscribers++
     if (timer) return

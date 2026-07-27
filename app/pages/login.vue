@@ -42,8 +42,6 @@ async function submit() {
 
 <template>
   <div class="grid min-h-screen place-items-center p-4">
-    <!-- Old arrangement: the mark and wordmark are centred *above* the card, the
-         card holds only the form, and the version sits under it. -->
     <div class="w-full max-w-sm">
       <div class="mb-6 flex flex-col items-center gap-3">
         <div

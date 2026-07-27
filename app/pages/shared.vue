@@ -3,27 +3,22 @@ import type { BackfillResult, Mapping, SharedTitle } from '../../shared/types'
 import type { SharedRow, SharedTitlePayload } from '../utils/shared-row'
 import { apiErrorMessage } from '../../shared/errors'
 
-// This page lists only the titles that are actually co-watched. Browsing the
-// library moved into the add modal, which matters for more than tidiness:
-// /api/shared already carries each shared title's name, year and art, so the page
-// renders with no Tautulli call at all. It used to fetch the whole library on load
-// just to surface the handful of shared entries inside it.
-const { data: shared, refresh: refreshShared } = await useAsyncData<SharedTitle[]>(
+const { data: shared, refresh: refreshShared, status: sharedStatus } = useAsyncData<SharedTitle[]>(
   'shared',
   () => $fetch('/api/shared'),
-  { default: (): SharedTitle[] => [] },
+  { default: (): SharedTitle[] => [], lazy: true },
 )
 
-const { data: mappings } = await useAsyncData<Mapping[]>(
+const { data: mappings, status: mappingsStatus } = useAsyncData<Mapping[]>(
   'mappings',
   () => $fetch('/api/mappings'),
-  { default: (): Mapping[] => [] },
+  { default: (): Mapping[] => [], lazy: true },
 )
+
+const loading = isFirstLoad(sharedStatus, mappingsStatus)
 
 const toast = useToast()
 
-// One modal component in two modes. `editing` doubles as the mode switch: null
-// means add.
 const modalOpen = ref(false)
 const editing = ref<SharedRow | null>(null)
 const busy = ref(false)
@@ -72,8 +67,6 @@ function backfillMessage(r: BackfillResult) {
   return `${plural(r.items, 'episode')} → ${plural(r.profiles, 'profile')} · ${r.ok_count} ok${failed}`
 }
 
-// Both add and edit land here: the modal hands back a complete row, so there is a
-// single write path and no branching on mode.
 async function saveTitle(p: SharedTitlePayload) {
   const wasEdit = mode.value === 'edit'
   busy.value = true
@@ -97,9 +90,6 @@ async function saveTitle(p: SharedTitlePayload) {
     return
   }
 
-  // The share has landed. Backfill runs second because it reads the assignment
-  // back out of the database, and it is best-effort from here on: a failure must
-  // not make it look as though nothing was saved.
   if (p.syncPrevious) {
     try {
       const r = await $fetch<BackfillResult>(
@@ -129,8 +119,6 @@ async function saveTitle(p: SharedTitlePayload) {
   busy.value = false
 }
 
-// Unassigning every profile is what "not shared" means server-side, so removal is
-// a PUT with an empty list rather than its own endpoint.
 async function removeTitle(ratingKey: string) {
   const row = shared.value.find((s) => s.rating_key === ratingKey)
   busy.value = true
@@ -160,12 +148,17 @@ async function removeTitle(ratingKey: string) {
       </p>
     </div>
 
-    <!-- Co-watching shares a watch between profiles, so it needs profiles first.
-         UEmpty rather than prose containing a link: its `actions` are ButtonProps,
-         `to` included, so the sentence that told you where to go becomes the button
-         that takes you there. Stock card padding — the old override existed only to
-         centre a single line of text. -->
-    <UCard v-if="!mappings.length">
+    <UCard v-if="loading" :ui="{ body: 'p-0 sm:p-0' }">
+      <template #header>
+        <div class="space-y-2">
+          <USkeleton class="h-4 w-28" />
+          <USkeleton class="h-3 w-40" />
+        </div>
+      </template>
+      <ListRowsSkeleton :rows="3" />
+    </UCard>
+
+    <UCard v-else-if="!mappings.length">
       <UEmpty
         icon="i-lucide-users-round"
         title="No profiles yet"
@@ -174,7 +167,6 @@ async function removeTitle(ratingKey: string) {
       />
     </UCard>
 
-    <!-- One card with a divided list, matching the Dashboard's Recent scrobbles. -->
     <UCard v-else :ui="{ body: 'p-0 sm:p-0' }">
       <template #header>
         <div class="flex flex-wrap items-center justify-between gap-3">
@@ -193,8 +185,6 @@ async function removeTitle(ratingKey: string) {
         watch together.
       </div>
 
-      <!-- divide-muted, not divide-default: the row rule is white/5 while the card
-           outline is white/10, as on the Dashboard. -->
       <div v-else class="divide-y divide-muted">
         <SharedTitleRow
           v-for="row in rows"

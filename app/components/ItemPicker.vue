@@ -2,16 +2,14 @@
 import type { LibraryItem, LibraryChild } from '../../shared/types'
 import { apiErrorMessage } from '../../shared/errors'
 
-// v-model is the resolved rating_key. For TV that is the EPISODE's own key —
-// getLibraryItems returns a SHOW's key, which is precisely the wrong thing to
-// scrobble and the exact Tautulli defect this bridge works around. Hence the
-// season/episode drill-down rather than a flat title list.
+// Resolves to the EPISODE's own rating_key. getLibraryItems returns a SHOW's key,
+// which is the wrong thing to scrobble and the Tautulli defect this bridge exists
+// to work around — hence the season/episode drill-down instead of a flat list.
 const model = defineModel<string>({ default: '' })
 
 type Mode = 'tv' | 'movie' | 'key'
 type Option = { label: string; value: string }
 
-// The endpoint clamps `length` to 200.
 const LIBRARY_LIMIT = 200
 
 const mode = ref<Mode>('tv')
@@ -50,9 +48,6 @@ const episodeOptions = computed<Option[]>(() =>
   episodes.value.map((e) => ({ label: e.index ? `${e.index} · ${e.title}` : e.title, value: e.rating_key })),
 )
 
-// A library bigger than LIBRARY_LIMIT is sliced alphabetically server-side, so a
-// title can simply be absent from the dropdown. Say so rather than letting the
-// user conclude it isn't in Plex.
 const shown = computed(() => (mode.value === 'tv' ? shows.value.length : movies.value.length))
 const total = computed(() => (mode.value === 'tv' ? showsTotal.value : moviesTotal.value))
 const truncated = computed(() => mode.value !== 'key' && total.value > shown.value)
@@ -60,8 +55,6 @@ const emptyLibrary = computed(
   () => mode.value !== 'key' && !busy.value && !failed.value && shown.value === 0,
 )
 
-// The library list has emptyLibrary; the drill-down levels had no equivalent, so
-// a lookup returning nothing left an empty enabled select and no explanation.
 const noChildren = computed(() => {
   if (mode.value !== 'tv' || busy.value || failed.value) return false
   if (season.value && !episodes.value.length) return 'episodes'
@@ -86,27 +79,14 @@ async function children(ratingKey: string): Promise<LibraryChild[]> {
   return r.items
 }
 
-// Both endpoints return ok:false with NO error string when Tautulli simply isn't
-// configured, and WITH one when it is configured but unreachable. That lets the
-// two cases read differently instead of both saying "unavailable".
 const NOT_CONFIGURED = 'Tautulli isn’t configured yet — add its URL and API key in step 1.'
 
-// `scope` decides how a failure degrades. A failed *library* fetch means the
-// picker has nothing to offer, so it falls back to Paste key. A failed
-// *season/episode* lookup must NOT do that: it would unmount a perfectly good
-// Show select and strand the user with no way to repopulate it.
-//
-// `failed` is cleared when an operation STARTS and never on success — otherwise
-// an overlapping success erases the message explaining a failure it didn't cause.
 async function guard(fn: () => Promise<void>, scope: 'library' | 'deep', isStale?: () => boolean) {
   busy.value = true
   failed.value = ''
   try {
     await fn()
   } catch (e) {
-    // A superseded request must not report its error over the newer one's
-    // results — the success path already re-asserts its selection, and the
-    // failure path needs the same check.
     if (isStale?.()) return
     failed.value = apiErrorMessage(e, e instanceof Error ? e.message : 'Tautulli lookup failed.')
     failedScope.value = scope
@@ -132,11 +112,6 @@ function loadMovies() {
   }, 'library')
 }
 
-// Re-derive the key from whatever is already selected in the target mode instead
-// of blanking it. Clicking the active segment — or round-tripping TV → Movies →
-// TV — used to leave a fully populated set of selects resolving to nothing, and
-// re-picking the same option could not recover it: reka-ui assigns an identical
-// object reference, so the watcher never fires.
 function pick(m: Mode) {
   if (m === mode.value) return
   mode.value = m
@@ -144,10 +119,6 @@ function pick(m: Mode) {
   if (m === 'tv') model.value = episode.value?.value ?? ''
   else if (m === 'movie') model.value = movie.value?.value ?? ''
   else model.value = ''
-  // Re-entering a mode retries whatever is missing, so a lookup that failed
-  // earlier is recoverable without closing the panel. Re-selecting the same
-  // option cannot trigger a retry on its own: reka-ui assigns an identical
-  // object reference, so the watcher never fires.
   if (m === 'movie') {
     if (!movies.value.length) loadMovies()
   } else if (m === 'tv') {
@@ -157,10 +128,6 @@ function pick(m: Mode) {
   }
 }
 
-// Extracted so pick() can retry a lookup that failed, not just the watchers.
-// Each re-asserts its own selection after awaiting: picking show A then B while
-// A is in flight would otherwise land A's seasons under B's name, and the user
-// submits an episode of the wrong show.
 function loadSeasons(s: Option) {
   guard(async () => {
     const rows = await children(s.value)
@@ -195,18 +162,15 @@ watch(season, (s) => {
   if (s) loadEpisodes(s)
 })
 
-// Clear the key when a selection is cleared, rather than leaving a stale one.
 watch(episode, (e) => { model.value = e ? e.value : '' })
 watch(movie, (m) => { model.value = m ? m.value : '' })
 </script>
 
 <template>
   <div class="space-y-3">
-    <!-- :model-value + @update:model-value rather than v-model, deliberately.
-         guard() sets `mode` programmatically when a library load fails, and this
-         event fires only on user interaction — so pick()'s `failed = ''` can never
-         wipe the very message that fallback just set. A plain v-model watcher
-         would, and the message would be gone before it ever rendered. -->
+    <!-- Not v-model: guard() also sets `mode` programmatically on a failed load, and
+         this event fires only on user input — so pick()'s reset cannot wipe the
+         error message that fallback just set. -->
     <UTabs
       :model-value="mode"
       :items="MODES"
@@ -259,9 +223,6 @@ watch(movie, (m) => { model.value = m ? m.value : '' })
     <p v-else-if="noChildren" class="text-xs text-warning" role="status">
       Tautulli returned no {{ noChildren }} for that selection.
     </p>
-    <!-- The two escape routes used to be prose telling you to click elsewhere.
-         UEmpty's `actions` are ButtonProps, onClick included, so they can just be
-         the buttons that do it. -->
     <UEmpty
       v-else-if="emptyLibrary"
       role="status"

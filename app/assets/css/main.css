@@ -1,19 +1,10 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
 
-/* The sidebar rail is the one surface with no Nuxt UI token of its own.
-   Registering it here makes it a real utility (bg-rail) instead of an arbitrary
-   hex value in the layout. There was a --color-panel beside it for the raised
-   modal/menu surface; it went when those component overrides did, since modals
-   and dropdowns now use the packaged bg-default. */
 @theme {
   --color-rail: #0b0f18;
 }
 
-/* The app is forced dark (colorMode.preference in nuxt.config), and with
-   ssr:false the .dark class only lands once the color-mode script runs — so
-   paint the page colour unconditionally to avoid a white flash, exactly as the
-   pre-Nuxt app's index.css did. */
 :root {
   color-scheme: dark;
 }
@@ -23,37 +14,15 @@ body {
   background-color: #0a0e16;
 }
 
-/* Nuxt UI's dark design tokens, retuned to the pre-Nuxt palette. Every surface
-   in app/ is drawn with the semantic utilities that read these (bg-default,
-   bg-elevated, ring-default, text-muted, …), so retuning them here shifts the
-   whole UI at once.
-   These are the real token names — @nuxt/ui/dist/runtime/index.css sets exactly
-   this list under `.dark`, and .nuxt/ui.css maps them onto Tailwind utilities
-   (--background-color-default: var(--ui-bg), and so on). This rule is
-   deliberately unlayered: Nuxt UI declares its values inside `@layer theme`,
-   and unlayered declarations outbid any layer. */
+/* Unlayered on purpose: Nuxt UI declares these inside `@layer theme`, and an
+   unlayered declaration outbids any layer. Wrapping this in a layer loses it. */
 .dark {
-  /* Page, and everything that sits at page level: modal/menu content before
-     its own override, inputs, the <pre> payload blocks. */
   --ui-bg: #0a0e16;
-  /* Cards use this at 50% (bg-elevated/50), which lands on the old
-     bg-white/[0.02]; code chips and placeholders use it solid, landing on the
-     old bg-white/5. */
   --ui-bg-elevated: #161b26;
-  /* --ui-bg-muted and --ui-bg-inverted are left alone. Nothing in app/ reads them
-     directly any more — the profile chips that tinted themselves bg-inverted/15
-     went when their initials avatars did — but they still back Nuxt UI's own
-     inverted surfaces, so retuning them would shift components silently. */
 
-  /* The old design outlined everything with translucent white rather than a
-     flat grey, which is what keeps a card readable both on the page and on top
-     of another card. Custom properties can carry the alpha directly, so
-     ring-default / border-default / divide-default all inherit it. */
   --ui-border: rgb(255 255 255 / 0.1);
   --ui-border-muted: rgb(255 255 255 / 0.06);
   --ui-border-accented: rgb(255 255 255 / 0.14);
 
-  /* Body copy. The rest of the ramp (muted -> neutral-400, dimmed ->
-     neutral-500, highlighted -> #fff) already matches the old slate ramp. */
   --ui-text: #e5e7eb;
 }

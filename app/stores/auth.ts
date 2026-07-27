@@ -5,8 +5,6 @@ export const useAuthStore = defineStore('auth', () => {
   const authenticated = ref(false)
   const username = ref<string | null>(null)
   const needsSetup = ref(false)
-  // Distinguishes "not logged in" from "haven't checked yet", so the route
-  // guard doesn't bounce to /login before the first status call lands.
   const ready = ref(false)
 
   function apply(s: AuthStatus) {

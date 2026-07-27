@@ -19,10 +19,6 @@ export const useSettingsStore = defineStore('settings', () => {
     settings.value = await $fetch<Settings>('/api/settings', { method: 'PUT', body: patch })
   }
 
-  // Forwarding is toggled from the page header, where other fields may hold
-  // unsaved edits. save() replaces the whole settings object with the server's
-  // row, which would silently revert them — so this merges back only the one
-  // field it owns.
   async function setForwarding(v: boolean) {
     const s = await $fetch<Settings>('/api/settings', { method: 'PUT', body: { forward_enabled: v } })
     if (settings.value) settings.value.forward_enabled = s.forward_enabled
@@ -58,9 +54,6 @@ export const useSettingsStore = defineStore('settings', () => {
     })
   }
 
-  // The library sections Tautulli monitors. Kept out of `settings` because it is
-  // live data read from Tautulli, not something we persist — only the operator's
-  // selection of section_ids is stored.
   const tautulliLibraries = ref<LibrarySection[]>([])
   const librariesError = ref<string | null>(null)
 

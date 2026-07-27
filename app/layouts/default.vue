@@ -6,7 +6,6 @@ const status = useStatusStore()
 const drawer = ref(false)
 const route = useRoute()
 
-// Navigating from inside the drawer should close it.
 watch(() => route.path, () => (drawer.value = false))
 
 const TITLES: Record<string, string> = {
@@ -22,11 +21,8 @@ onBeforeUnmount(() => status.stop())
 
 <template>
   <div class="flex min-h-screen">
-    <!-- Persistent rail, lg and up only. -->
     <aside class="hidden lg:flex sticky top-0 h-screen w-56 shrink-0 flex-col border-r border-default bg-rail">
       <div class="flex items-center gap-3 px-5 py-4">
-        <!-- from-primary-500 to-secondary-600 is the old violet -> fuchsia mark
-             (see app.config.ts: secondary is fuchsia purely for this). -->
         <div
           class="grid size-9 place-items-center rounded-xl bg-linear-to-br from-primary-500 to-secondary-600 text-lg font-bold text-white shadow-lg shadow-primary-900/40"
         >
@@ -37,7 +33,6 @@ onBeforeUnmount(() => status.stop())
       <div class="mt-2 px-3">
         <AppNav />
       </div>
-      <!-- Version sits above the connection pill, as in the pre-Nuxt sidebar. -->
       <div class="mt-auto p-3">
         <div class="mb-2.5 text-center text-[11px] text-dimmed">v{{ VERSION }}</div>
         <div class="flex items-center gap-2 rounded-lg bg-elevated px-3 py-2.5">
@@ -54,7 +49,6 @@ onBeforeUnmount(() => status.stop())
       </div>
     </aside>
 
-    <!-- Off-canvas nav, below lg. Same rail colour as the persistent one. -->
     <USlideover
       v-model:open="drawer"
       side="left"

@@ -3,28 +3,29 @@ import type { ScrobbleEvent, Stats } from '../../shared/types'
 
 const limit = ref(25)
 
-const { data: stats, refresh: refreshStats } = await useAsyncData<Stats>(
+const { data: stats, refresh: refreshStats, status: statsStatus } = useAsyncData<Stats>(
   'stats',
   () => $fetch('/api/stats'),
+  { lazy: true },
 )
 
-const { data: events, refresh: refreshEvents, error } = await useAsyncData<ScrobbleEvent[]>(
+const { data: events, refresh: refreshEvents, error, status: eventsStatus } = useAsyncData<ScrobbleEvent[]>(
   'events',
   () => $fetch('/api/events', { query: { limit: limit.value } }),
-  { watch: [limit] },
+  { watch: [limit], lazy: true },
 )
+
+const loading = isFirstLoad(statsStatus, eventsStatus)
 
 function refresh() {
   refreshStats()
   refreshEvents()
 }
 
-// Live view: the legacy dashboard polled every 5s.
 let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => { timer = setInterval(refresh, 5000) })
 onBeforeUnmount(() => clearInterval(timer))
 
-// Tile accents mirror the old white / violet-300 / sky-300 / emerald-300 set.
 const tiles = computed(() => [
   { label: 'Total', icon: 'i-lucide-layers', value: stats.value?.total ?? '—', class: 'text-highlighted' },
   { label: 'Episodes', icon: 'i-lucide-tv', value: stats.value?.episodes ?? '—', class: 'text-primary-300' },
@@ -32,12 +33,8 @@ const tiles = computed(() => [
   { label: 'Users', icon: 'i-lucide-users', value: stats.value?.users ?? '—', class: 'text-success-300' },
 ])
 
-// A co-watched title records one row per profile it forwarded to, so the raw feed
-// repeats the same watch N times. Group them back into one entry each.
 const groups = computed(() => groupEvents(events.value ?? []))
 
-// Deliberately counted in ROWS, not groups: `limit` and stats.total are both row
-// counts, so mixing in the grouped length here would make the number drift.
 const remaining = computed(() =>
   Math.max(0, (stats.value?.total ?? 0) - (events.value?.length ?? 0)),
 )
@@ -45,16 +42,14 @@ const remaining = computed(() =>
 
 <template>
   <div class="space-y-6">
-    <!-- 2-up on phones, 4-up from sm. -->
     <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
-      <!-- Stock card padding. The old :ui override tightened it for the 2-up phone
-           layout, which was preference rather than need. -->
       <UCard v-for="t in tiles" :key="t.label">
         <div class="flex items-center gap-2 text-xs uppercase tracking-wider text-muted">
           <UIcon :name="t.icon" class="size-4 text-dimmed" />
           <span class="truncate">{{ t.label }}</span>
         </div>
-        <div class="mt-2 text-2xl font-semibold sm:text-3xl" :class="t.class">{{ t.value }}</div>
+        <USkeleton v-if="loading" class="mt-2 h-8 w-14 sm:h-9" />
+        <div v-else class="mt-2 text-2xl font-semibold sm:text-3xl" :class="t.class">{{ t.value }}</div>
       </UCard>
     </div>
 
@@ -83,13 +78,13 @@ const remaining = computed(() =>
         :description="error.message"
       />
 
-      <div v-if="!events?.length" class="px-4 py-12 text-center text-sm text-muted">
+      <ListRowsSkeleton v-if="loading" :rows="4" />
+
+      <div v-else-if="!events?.length" class="px-4 py-12 text-center text-sm text-muted">
         No scrobbles yet. Point a Tautulli webhook at
         <code class="text-default">/api/webhook/tautulli</code> and play something.
       </div>
 
-      <!-- divide-muted, not divide-default: the old list rule was white/5 while
-           the card outline itself was white/10. -->
       <div v-else class="divide-y divide-muted">
         <EventRow v-for="g in groups" :key="g.key" :group="g" />
       </div>

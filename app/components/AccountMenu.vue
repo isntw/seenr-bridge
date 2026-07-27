@@ -51,19 +51,12 @@ const menuItems = computed(() => [
 
 <template>
   <UDropdownMenu :items="menuItems">
-    <!-- `subtle` is Nuxt UI's filled-but-quiet variant. The avatar and the chevron
-         are props, not nested components: UButton sizes a leading avatar and a
-         trailing icon itself, which is what the old pl-1/pr-3 padding and the
-         avatar's own `ui` override were compensating for.
-         `text` renders the two-letter initials verbatim; `alt` would have Nuxt UI
-         derive its own initials from them and show a single letter. -->
     <UButton
       color="neutral"
       variant="subtle"
       :avatar="{ text: initials }"
       trailing-icon="i-lucide-chevron-down"
     >
-      <!-- Username is noise on a phone; the avatar carries the affordance. -->
       <span class="hidden max-w-35 truncate sm:block">{{ username }}</span>
     </UButton>
   </UDropdownMenu>

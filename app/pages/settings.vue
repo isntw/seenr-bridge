@@ -6,15 +6,11 @@ const store = useSettingsStore()
 const status = useStatusStore()
 const toast = useToast()
 
-await store.fetch()
+store.fetch()
 
 onMounted(() => {
   status.start()
   store.fetchTautulliUsers().catch(() => {})
-  // Seed the checkboxes from what is stored, then ask Tautulli what libraries
-  // exist. Both are best-effort: an unreachable Tautulli shows an inline note
-  // rather than breaking the page.
-  librarySel.value = [...(store.settings?.libraries ?? [])]
   store.fetchLibraries().catch(() => {})
 })
 onBeforeUnmount(() => status.stop())
@@ -32,9 +28,6 @@ function isTriggerSelected(key: string) {
   return selectedTriggers.value.includes(key)
 }
 
-// Chips are aria-pressed buttons rather than checkboxes, so each derives its own
-// pressed state from the array and toggles membership. A shared v-model across
-// siblings would fight itself.
 function toggleTrigger(key: string, checked: boolean) {
   if (checked) {
     if (!selectedTriggers.value.includes(key)) selectedTriggers.value.push(key)
@@ -83,11 +76,6 @@ function syncSummary(m: Mapping) {
   return 'nothing selected'
 }
 
-// Whether step 1's sub-sections start folded. Deliberately keyed off the SAVED
-// settings rather than the live status poll: settings are available synchronously
-// after the initial fetch, so the decision is made once and is the same on every
-// load. Keying it off `status.tautulli` would mean the first paint always looks
-// unconfigured (no poll has returned yet), so nothing would ever start collapsed.
 const isConfigured = computed(
   () => !!store.settings?.tautulli_url && !!store.settings?.tautulli_apikey,
 )
@@ -106,14 +94,19 @@ const triggerSummary = computed(() =>
   selectedTriggers.value.length ? selectedTriggers.value.join(', ') : 'none selected',
 )
 
-// ── Library selection ───────────────────────────────────────────────────────
-// An empty selection means EVERY library, here and server-side, so upgrading
-// never silently stops forwarding. The UI shows "all ticked" for an empty
-// selection, and saving with everything ticked stores [] rather than an
-// exhaustive list — so a library you add in Plex later is included automatically
-// instead of being silently excluded.
 const librarySel = ref<string[]>([])
 const librariesBusy = ref(false)
+
+let librariesSeeded = false
+watch(
+  () => store.settings,
+  (s) => {
+    if (!s || librariesSeeded) return
+    librariesSeeded = true
+    librarySel.value = [...s.libraries]
+  },
+  { immediate: true },
+)
 
 const libsSorted = computed(() =>
   [...store.tautulliLibraries].sort(
@@ -127,8 +120,6 @@ function isLibOn(id: string) {
 }
 
 function toggleLib(id: string, on: boolean) {
-  // The first interaction on an empty (= all) selection has to materialise the
-  // full list first, or unticking one would read as "select only that one".
   const base = librarySel.value.length
     ? librarySel.value
     : libsSorted.value.map((l) => l.section_id)
@@ -162,17 +153,12 @@ async function saveLibraries() {
   }
 }
 
-// Sub-section pills read the same polled status the header and sidebar use — no
-// extra request path is introduced.
 const connStatus = computed<'ok' | 'bad' | 'pending'>(() =>
   status.tautulli === null ? 'pending' : status.tautulli.ok ? 'ok' : 'bad',
 )
 const connStatusText = computed(() =>
   status.tautulli === null ? 'checking…' : status.tautulli.ok ? 'connected' : 'unreachable',
 )
-// status.webhook initialises to false, so without a pending state this pill
-// renders a red "not set up" on every fresh load until the first poll returns.
-// status.tautulli === null is an exact proxy for "no poll has completed yet".
 const hookStatus = computed<'ok' | 'bad' | 'pending'>(() =>
   status.tautulli === null ? 'pending' : status.webhook ? 'ok' : 'bad',
 )
@@ -197,9 +183,6 @@ async function saveConnection() {
   }
 }
 
-// The verdict lands on the button itself: it is where the click happened and where
-// you are already looking. It reverts after a few seconds so a stale "Connected"
-// can never be read as the current state — that is what the status pill is for.
 type ConnTest = 'idle' | 'busy' | 'ok' | 'bad'
 const connTest = ref<ConnTest>('idle')
 let connTestRevert: ReturnType<typeof setTimeout> | undefined
@@ -221,13 +204,8 @@ async function testConnection() {
       tautulli_apikey: store.settings!.tautulli_apikey,
     })
     connTest.value = r.ok ? 'ok' : 'bad'
-    // Only on failure. The message names the Plex server on success, which the
-    // button already conveys more directly — but a failure reason ("HTTP 401")
-    // is actionable and far too long to sit in a label.
     if (!r.ok) toast.add({ title: r.message, color: 'error' })
   } catch (e) {
-    // testTautulli rejects if the request itself fails, e.g. the bridge is down.
-    // Without this the button would sit spinning for ever.
     connTest.value = 'bad'
     toast.add({ title: apiErrorMessage(e, 'Could not reach the bridge.'), color: 'error' })
   } finally {
@@ -294,16 +272,6 @@ async function saveAdvanced() {
   toast.add({ title: 'Saved.', color: 'success' })
 }
 
-// The switch left Advanced, so it no longer has a Save button next to it and
-// must persist on change. On failure the optimistic value is rolled back, so the
-// switch never lies about what the server holds.
-//
-// `forwardingBusy` is not cosmetic. Without it two overlapping toggles can both
-// fail and land the display on the wrong value: from ON, clicking OFF then ON
-// fires two requests; the first rejection restores ON, the second restores OFF,
-// and the switch ends OFF while the server still holds ON. Rolling back to a
-// captured `prev` does not fix that on its own — the second call captures the
-// already-mutated value — so the guard is what makes the rollback sound.
 const forwardingBusy = ref(false)
 
 async function toggleForwarding(v: boolean) {
@@ -322,10 +290,6 @@ async function toggleForwarding(v: boolean) {
   }
 }
 
-// Preview and Send share this — the only difference is dryRun (build the
-// payload without forwarding, vs. actually posting to seenr and recording an
-// event row). Both hit the authed /api/test endpoint directly since the
-// result is page-local scratch state, not shared app state like settings.
 async function runTest(dryRun: boolean) {
   if (!testRatingKey.value.trim() || !testUsername.value.trim()) {
     toast.add({ title: 'Pick an item and a user first.', color: 'error' })
@@ -352,15 +316,18 @@ async function runTest(dryRun: boolean) {
 </script>
 
 <template>
-  <div v-if="store.settings" class="space-y-6">
-    <!-- "Setup" on the left; the master forwarding switch and the live status
-         line on the right. Everything wraps rather than overflowing. -->
+  <div v-if="!store.settings" class="space-y-6">
+    <USkeleton class="h-7 w-32" />
+    <USkeleton class="h-72 w-full rounded-lg" />
+    <USkeleton class="h-56 w-full rounded-lg" />
+    <USkeleton class="h-14 w-full rounded-lg" />
+  </div>
+
+  <div v-else class="space-y-6">
     <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
       <h2 class="text-lg font-semibold text-highlighted">Setup</h2>
       <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
         <span class="flex items-center gap-1.5">
-          <!-- standalone + inset is the documented way to render a lone Chip
-               inline; it is how Select and InputMenu draw their own indicators. -->
           <UChip
             standalone
             inset
@@ -383,9 +350,6 @@ async function runTest(dryRun: boolean) {
             {{ hookStatus === 'pending' ? 'checking…' : hookStatus === 'ok' ? 'webhook active' : 'no webhook' }}
           </span>
         </span>
-        <!-- The master kill switch, promoted out of Advanced. USwitch's own `label`
-             prop makes the word part of the hit area and supplies the accessible
-             name, which is what the hand-written <label> wrapper was for. -->
         <USwitch
           label="Forwarding"
           :model-value="store.settings.forward_enabled"
@@ -412,23 +376,11 @@ async function runTest(dryRun: boolean) {
             <UInput v-model="store.settings.tautulli_apikey" type="password" placeholder="xxxxxxxx" class="w-full" />
           </UFormField>
         </div>
-        <!-- Group-level, not per-field: a `help` on one UFormField and not its
-             sibling makes that grid cell taller and the row ragged. Keeping the
-             hints here is what lets the grid align on items-end. -->
         <p class="text-xs text-dimmed">
           URL e.g. <code class="text-default">http://tautulli:8181</code> · key from Tautulli →
           Settings → Web Interface → API key
         </p>
-        <!-- No border-t here. Right-alignment plus whitespace already separates
-             the actions from the fields, and the seam starting the next
-             sub-section is the only rule in this card that carries meaning —
-             four stacked rules read as noise. -->
         <div class="flex flex-col gap-3 pt-1 sm:flex-row sm:justify-end">
-          <!-- Below sm the row stacks with the primary on top (order-1), so the
-               action you almost always want is the first control you meet as the
-               row scrolls into view; the secondary drops beneath it. -->
-          <!-- Colour, icon and label all carry the verdict, so it reads without
-               relying on colour alone. -->
           <UButton
             :loading="connTest === 'busy'"
             :color="connTest === 'ok' ? 'success' : connTest === 'bad' ? 'error' : 'neutral'"
@@ -447,9 +399,6 @@ async function runTest(dryRun: boolean) {
         </div>
       </SetupSubsection>
 
-      <!-- Libraries sit between Connection and Event webhook because that is the
-           order you actually do things: connect, choose what to read, then wire up
-           events. Selecting nothing means everything. -->
       <SetupSubsection
         label="Libraries"
         :status="libsSorted.length ? 'ok' : 'pending'"
@@ -471,21 +420,12 @@ async function runTest(dryRun: boolean) {
           :description="store.librariesError"
         />
 
-        <!-- Skeleton rows rather than the words "Loading libraries…": they occupy the
-             shape the real rows will, so the panel does not jump when they arrive.
-             The height/width classes are how USkeleton is sized — it has no
-             intrinsic dimensions — not an override of it. -->
         <div v-else-if="!libsSorted.length" class="space-y-1.5">
           <USkeleton v-for="i in 3" :key="i" class="h-11 w-full" />
         </div>
 
         <template v-else>
           <div class="space-y-1.5">
-            <!-- variant="card" is the row: it brings the border, the radius and (with
-                 size) the padding that a hand-rolled <label> wrapper used to supply,
-                 and it renders its own properly associated label element. It also
-                 borders the whole card in primary while checked, which the hand-made
-                 version never did — only the box itself showed state. -->
             <UCheckbox
               v-for="l in libsSorted"
               :key="l.section_id"
@@ -513,11 +453,6 @@ async function runTest(dryRun: boolean) {
           </div>
 
           <div class="flex flex-col gap-3 pt-1 sm:flex-row sm:items-center">
-            <!-- UButton variant="link", not ULink: these are actions, and ULink is the
-                 navigation primitive. It happens to render a <button> when given no
-                 `to`, so the old markup worked — but `link` is the variant that exists
-                 for an action styled as a link, and it brings its own colour and
-                 focus ring instead of a text-primary class. -->
             <div class="flex gap-1">
               <UButton variant="link" size="xs" label="Select all" @click="setAllLibs(true)" />
               <UButton variant="link" size="xs" label="None" @click="setAllLibs(false)" />
@@ -547,15 +482,6 @@ async function runTest(dryRun: boolean) {
           the recommended trigger.
         </p>
         <div class="flex flex-wrap gap-2" role="group" aria-label="Triggers to enable">
-          <!-- Chips, not checkboxes: the `recommended` badge used to be passed as
-               #description to the Watched checkbox, which made that one row
-               taller than its four siblings. The badge now folds into the
-               selected state and the recommendation moved to the line above.
-
-               These were a raw <button> whose classes copied Nuxt UI's `md` button
-               size verbatim — a UButton in all but name, sitting beside real ones.
-               Now props only: the selected state is a colour/variant swap and the
-               tick is a leading icon. -->
           <UButton
             v-for="t in TRIGGERS"
             :key="t.key"
@@ -576,10 +502,6 @@ async function runTest(dryRun: boolean) {
           />
         </div>
 
-        <!-- Chrome-less on purpose. This is an alternative to the Sync button
-             directly above it, not a third page-level section, so it gets no
-             card background, ring or radius — unlike Advanced and Test, which
-             use DisclosureCard. -->
         <UCollapsible v-model:open="manual">
           <UButton color="neutral" variant="ghost" class="w-full justify-start gap-2.5 px-0">
             <UIcon
@@ -608,12 +530,6 @@ async function runTest(dryRun: boolean) {
     <SetupStep :n="2" title="seenr users" hint="each Plex user → their seenr token">
       <p v-if="!store.mappings.length" class="text-sm text-muted">No users yet. Add one below.</p>
 
-      <!-- Discrete cards rather than a divide-y list. A full-bleed ruled list
-           borrowed from the Dashboard read as one undifferentiated block here,
-           because unlike an event feed each row is a thing you act on. Giving
-           each its own surface and ring separates them without adding rules —
-           this card sits on bg-elevated/40, a step up from the page-coloured
-           inputs below it, so the two groups don't blend. -->
       <div v-else class="space-y-2">
         <div
           v-for="m in store.mappings"
@@ -641,16 +557,8 @@ async function runTest(dryRun: boolean) {
         </div>
       </div>
 
-      <!-- items-end, and no help text inside the grid. Both fields are now the
-           same height, so the bare Add button lines up with the inputs on its
-           own. The invisible non-breaking-space spacer div that used to shim it
-           is gone, and nothing replaced it. -->
       <div class="mt-4 grid gap-3 sm:grid-cols-[1fr_2fr_auto] sm:items-end">
         <UFormField label="Plex username">
-          <!-- Free text stays allowed so manual entry works when Tautulli is
-               unreachable. The generated "Create …" option calls preventDefault()
-               internally and only emits `create` — it does not update v-model —
-               so the typed value is applied here explicitly. -->
           <USelectMenu
             v-model="newUser"
             :items="availableUsers"
@@ -711,17 +619,11 @@ async function runTest(dryRun: boolean) {
           <USelectMenu v-model="testAction" :items="TEST_ACTIONS" class="w-full" />
         </UFormField>
       </div>
-      <!-- Out of the grid on purpose: as a `help` on the User field this line
-           made that cell taller than its siblings and the row ragged. -->
       <p class="text-xs text-dimmed">The user must have a seenr token mapped in step 2.</p>
 
       <USeparator />
 
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <!-- Preview is the solid primary: it is the safe, common action, and was
-             previously styled as the afterthought. Send drops from solid rose to
-             `subtle` — still unmistakably the destructive half, no longer the
-             loudest pixel on the page. -->
         <UButton
           icon="i-lucide-eye"
           label="Preview"

@@ -30,6 +30,7 @@ export const useSettingsStore = defineStore('settings', () => {
     enabled?: boolean
     sync_movies?: boolean
     sync_episodes?: boolean
+    plex_token?: string
   }) {
     await $fetch<Mapping>('/api/mappings', { method: 'POST', body: m })
     mappings.value = await $fetch<Mapping[]>('/api/mappings')

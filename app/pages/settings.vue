@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Mapping, TestResult } from '../../shared/types'
+import type { Mapping, PlexLinkStatus, TestResult } from '../../shared/types'
 import { apiErrorMessage } from '../../shared/errors'
 
 const store = useSettingsStore()
@@ -236,6 +236,7 @@ async function saveEdit() {
     enabled: edit.value.enabled,
     sync_movies: edit.value.sync_movies,
     sync_episodes: edit.value.sync_episodes,
+    plex_token: edit.value.plex_token,
   })
   edit.value = null
   toast.add({ title: 'Updated.', color: 'success' })
@@ -289,6 +290,50 @@ async function toggleForwarding(v: boolean) {
     forwardingBusy.value = false
   }
 }
+
+const plexLink = ref<PlexLinkStatus | null>(null)
+const plexBusy = ref(false)
+const plexError = ref<string | null>(null)
+
+async function loadPlexLink() {
+  try {
+    plexLink.value = await $fetch<PlexLinkStatus>('/api/plex/users')
+  } catch (e) {
+    plexError.value = apiErrorMessage(e, 'Could not read the Plex link status.')
+  }
+}
+
+// The PIN flow: create a PIN, open plex.tv in a new tab, then poll until the operator
+// approves it. The token is saved server-side by the poll endpoint and never comes back
+// to the browser.
+async function signInWithPlex() {
+  plexBusy.value = true
+  plexError.value = null
+  try {
+    const pin = await $fetch<{ id: string; code: string; url: string }>('/api/plex/pin', {
+      method: 'POST',
+    })
+    window.open(pin.url, '_blank', 'noopener')
+
+    const deadline = Date.now() + 120_000
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 2000))
+      const r = await $fetch<{ pending: boolean }>(`/api/plex/pin/${encodeURIComponent(pin.id)}`)
+      if (!r.pending) {
+        await store.fetch()
+        await loadPlexLink()
+        return
+      }
+    }
+    plexError.value = 'Timed out waiting for Plex. Try again.'
+  } catch (e) {
+    plexError.value = apiErrorMessage(e, 'Could not sign in with Plex.')
+  } finally {
+    plexBusy.value = false
+  }
+}
+
+onMounted(() => void loadPlexLink())
 
 async function runTest(dryRun: boolean) {
   if (!testRatingKey.value.trim() || !testUsername.value.trim()) {
@@ -580,6 +625,47 @@ async function runTest(dryRun: boolean) {
       </p>
     </SetupStep>
 
+    <SetupStep :n="3" title="Plex" hint="optional — also mark co-watched titles watched in Plex">
+      <p class="text-sm text-muted">
+        Plex stores "watched" per account, so marking a co-watcher's copy needs their own
+        access. Sign in as the server owner once and the bridge finds the rest.
+      </p>
+
+      <UAlert v-if="plexError" color="error" variant="subtle" class="mt-3" :description="plexError" />
+
+      <div class="mt-3 flex flex-wrap items-center gap-3">
+        <UButton
+          :label="plexLink?.connected ? 'Reconnect Plex' : 'Sign in with Plex'"
+          :loading="plexBusy"
+          icon="i-lucide-link"
+          @click="signInWithPlex"
+        />
+        <span v-if="plexBusy" class="text-xs text-dimmed">
+          Approve the request in the Plex tab that just opened…
+        </span>
+        <template v-else-if="plexLink?.connected">
+          <UBadge
+            :color="plexLink.unmatched.length ? 'warning' : 'success'"
+            variant="subtle"
+            size="sm"
+            :label="`${plexLink.matched.length} of ${plexLink.matched.length + plexLink.unmatched.length} users matched`"
+          />
+        </template>
+      </div>
+
+      <p v-if="plexLink?.error" class="mt-2 text-xs text-warning">
+        Plex reported: {{ plexLink.error }}
+      </p>
+      <p v-else-if="plexLink?.unmatched.length" class="mt-2 text-xs text-warning">
+        No token found for {{ plexLink.unmatched.join(', ') }} — likely a Plex Home profile.
+        Add one by hand under Configure for that user, or their Plex will be left alone.
+      </p>
+      <p class="mt-2 text-xs text-dimmed">
+        Nothing is written to Plex until a shared title has "Also mark watched in Plex"
+        ticked on the Shared page.
+      </p>
+    </SetupStep>
+
     <div class="flex items-center gap-3 pt-2">
       <hr class="flex-1 border-muted" />
       <span class="text-xs uppercase tracking-wider text-dimmed">More</span>
@@ -713,6 +799,12 @@ async function runTest(dryRun: boolean) {
             <span class="text-sm">Movies</span>
             <USwitch v-model="edit.sync_movies" />
           </div>
+          <UFormField
+            label="Plex token (optional)"
+            help="Only needed when Plex did not report this user — e.g. a Plex Home profile."
+          >
+            <UInput v-model="edit.plex_token" type="password" placeholder="leave blank to auto-detect" class="w-full" />
+          </UFormField>
         </div>
       </template>
       <template #footer>

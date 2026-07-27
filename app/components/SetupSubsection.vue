@@ -37,12 +37,16 @@ defineProps<{
            reka-ui puts aria-expanded/aria-controls on it, so the header keeps its
            status pill and summary without a second nested button. -->
       <template #default="{ open }">
-        <!-- mb-3 only while open. It is the gap between this header and the content
-             below it, so when collapsed there is nothing to separate and the margin
-             just pushes the label off-centre in its band. -->
-        <button
-          type="button"
-          class="flex w-full flex-wrap items-center gap-2 rounded text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-400"
+        <!-- Props only, same as EventRow's trigger: UButton's own padding, hover and
+             focus ring. The header is therefore no longer flush with the content
+             below it — that inset is the component's padding, not a mistake.
+             mb-3 only while open: it is the gap between header and content, so with
+             nothing below it the margin just pushes the label off-centre. -->
+        <UButton
+          block
+          color="neutral"
+          variant="ghost"
+          size="sm"
           :class="open ? 'mb-3' : ''"
         >
           <UIcon
@@ -58,10 +62,13 @@ defineProps<{
             size="sm"
             :label="statusText"
           />
-          <span v-if="!open && summary" class="ml-auto truncate pl-2 text-xs text-dimmed">
+          <!-- min-w-0 is what makes `truncate` work inside a flex row; without it a
+               flex item refuses to shrink below its content and overflows instead.
+               A class on my own span, not an override of UButton. -->
+          <span v-if="!open && summary" class="ml-auto min-w-0 truncate pl-2 text-xs text-dimmed">
             {{ summary }}
           </span>
-        </button>
+        </UButton>
       </template>
 
       <template #content>

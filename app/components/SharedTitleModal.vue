@@ -275,12 +275,16 @@ function submit() {
                 No titles found.
               </p>
               <div v-else class="divide-y divide-muted">
-                <button
+                <!-- Props only: UButton's ghost hover and its own disabled dimming,
+                     which is what `already shared` rows relied on a hand-written
+                     disabled:opacity for. -->
+                <UButton
                   v-for="i in items"
                   :key="i.rating_key"
-                  type="button"
+                  block
+                  color="neutral"
+                  variant="ghost"
                   :disabled="isAlreadyShared(i)"
-                  class="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors enabled:hover:bg-elevated/50 disabled:opacity-45"
                   @click="pick(i)"
                 >
                   <img
@@ -299,7 +303,7 @@ function submit() {
                   </span>
                   <span v-if="i.year" class="shrink-0 text-xs text-dimmed">{{ i.year }}</span>
                   <span v-if="isAlreadyShared(i)" class="shrink-0 text-xs text-dimmed">already shared</span>
-                </button>
+                </UButton>
               </div>
             </div>
             <div v-if="items.length < total" class="mt-2 text-center">

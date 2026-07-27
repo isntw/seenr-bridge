@@ -7,9 +7,9 @@ import type { SharedRow } from '../utils/shared-row'
 // Recent-scrobbles list.
 //
 // Everything inside is display-only, which is what lets the whole row be a single
-// <button>. Interactive profile chips inside a clickable row would nest a button
-// in a button: invalid HTML, and screen readers and keyboard users both suffer
-// for it. Editing happens in the modal this row opens.
+// UButton. Interactive profile chips inside a clickable row would nest a button in
+// a button: invalid HTML, and screen readers and keyboard users both suffer for it.
+// Editing happens in the modal this row opens.
 defineProps<{
   row: SharedRow
   mappings: Mapping[]
@@ -25,9 +25,13 @@ function assigned(mappings: Mapping[], profiles: number[]) {
 </script>
 
 <template>
-  <button
-    type="button"
-    class="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-elevated/40 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary-400 sm:px-5"
+  <!-- Props only, identical to EventRow's row trigger. These two lists are meant to
+       read as one system, so if one takes UButton's geometry the other must too. -->
+  <UButton
+    block
+    color="neutral"
+    variant="ghost"
+    size="xl"
     :aria-label="`Edit ${row.title}`"
     @click="$emit('edit')"
   >
@@ -79,5 +83,5 @@ function assigned(mappings: Mapping[], profiles: number[]) {
     </div>
 
     <UIcon name="i-lucide-chevron-right" class="size-4 shrink-0 text-dimmed" />
-  </button>
+  </UButton>
 </template>

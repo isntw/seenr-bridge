@@ -493,23 +493,20 @@ async function runTest(dryRun: boolean) {
                taller than its four siblings. The badge now folds into the
                selected state and the recommendation moved to the line above.
 
-               `px-2.5 py-1.5 text-sm gap-1.5` is verbatim Nuxt UI's `md` button
-               size (see .nuxt/ui/button.ts) — this is a raw <button> with no
-               component defaults of its own, and it sits beside real UButtons. -->
-          <button
+               These were a raw <button> whose classes copied Nuxt UI's `md` button
+               size verbatim — a UButton in all but name, sitting beside real ones.
+               Now props only: the selected state is a colour/variant swap and the
+               tick is a leading icon. -->
+          <UButton
             v-for="t in TRIGGERS"
             :key="t.key"
-            type="button"
+            :color="isTriggerSelected(t.key) ? 'primary' : 'neutral'"
+            :variant="isTriggerSelected(t.key) ? 'subtle' : 'outline'"
+            :leading-icon="isTriggerSelected(t.key) ? 'i-lucide-check' : undefined"
             :aria-pressed="isTriggerSelected(t.key)"
-            class="inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm ring-1 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-400"
-            :class="isTriggerSelected(t.key)
-              ? 'bg-primary-600/20 text-primary-200 ring-primary-400/40'
-              : 'bg-default text-muted ring-default hover:text-default'"
+            :label="t.label"
             @click="toggleTrigger(t.key, !isTriggerSelected(t.key))"
-          >
-            <span v-if="isTriggerSelected(t.key)" aria-hidden="true">✓</span>
-            <span>{{ t.label }}</span>
-          </button>
+          />
         </div>
         <div class="flex pt-1 sm:justify-end">
           <UButton

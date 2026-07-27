@@ -78,13 +78,13 @@ function recipientStatus(r: EventRecipient) {
        read-only detail, so there is no input state to preserve, and keeping every
        row's payload <pre> mounted would mean rendering up to 1000 of them. -->
   <UCollapsible v-model:open="open">
-    <!-- Geometry, hover and focus are deliberately identical to SharedTitleRow so
-         the two lists read as one system. as-child makes this button the trigger,
-         so reka-ui owns aria-expanded and pairs it with aria-controls. -->
-    <button
-      type="button"
-      class="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-elevated/40 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary-400 sm:px-5"
-    >
+    <!-- Props only, no classes: the row takes UButton's own padding, gap, radius,
+         hover and focus ring. `block` supplies w-full, and its justify-center is
+         moot because the title block below is flex-1 and absorbs the space — which
+         is what makes a zero-override row possible at all.
+         as-child makes this the collapsible trigger, so reka-ui owns aria-expanded
+         and pairs it with aria-controls. -->
+    <UButton block color="neutral" variant="ghost" size="xl">
       <img
         v-if="group.image"
         :src="`/api/image?path=${encodeURIComponent(group.image)}`"
@@ -145,7 +145,7 @@ function recipientStatus(r: EventRecipient) {
         class="size-4 shrink-0 text-dimmed transition-transform"
         :class="open ? 'rotate-90' : ''"
       />
-    </button>
+    </UButton>
 
     <template #content>
       <!-- bg-default is darker than the card, matching the old bg-black/30 well. -->
@@ -177,7 +177,7 @@ function recipientStatus(r: EventRecipient) {
              its own error, so collapsing them would hide which profile broke. -->
         <div class="space-y-3">
           <div v-for="r in group.recipients" :key="r.id">
-            <div class="mb-1 flex flex-wrap items-center gap-2">
+            <div class="mb-2.5 flex flex-wrap items-center gap-2">
               <span class="text-xs font-medium text-default">{{ r.username }}</span>
               <UBadge
                 :color="r.ok ? 'success' : 'error'"

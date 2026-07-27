@@ -18,6 +18,7 @@ function ev(over: Partial<ScrobbleEvent> = {}): ScrobbleEvent {
     image: null,
     series_key: null,
     seenr_status: 200,
+    plex_status: null,
     ok: true,
     error: null,
     payload: null,

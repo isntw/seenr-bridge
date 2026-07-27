@@ -54,65 +54,46 @@
 Two facts hold up this entire feature and documentation cannot settle either. Confirm both against the live server before writing any production code. **If either fails, stop and report — do not work around it.**
 
 **Files:**
-- Create: `/tmp/plex-spike.mjs` (throwaway — must NOT be committed)
+- Create: `.superpowers/sdd/2026-07-27-plex-mark-watched/plex-spike.mjs` (throwaway; `.superpowers/` is git-ignored, so it cannot be committed by accident)
+
+**This task is run by the operator, not by a subagent** — it needs a Plex sign-in and a human looking at a Plex client afterwards.
 
 - [ ] **Step 1: Write the spike script**
 
-Fill in the four constants from the running instance. `TAUTULLI_KEY` is in Settings → Tautulli → API key; `PLEX_OWNER_TOKEN` comes from any Plex Web item's "Get Info → View XML" URL.
+The script asks the operator for **nothing**:
 
-```javascript
-// /tmp/plex-spike.mjs — throwaway. Confirms the two unproven mechanics.
-const TAUTULLI_URL = 'http://tautulli:8181'
-const TAUTULLI_KEY = '...'
-const PLEX_OWNER_TOKEN = '...'
-const TEST_EPISODE_RATING_KEY = '...'   // one episode a co-watcher has NOT watched
+- Tautulli's URL and API key are read from `data/seenr-bridge.db` (the local dev database), so no credentials are pasted or left in shell history.
+- The Plex owner token comes from **the OAuth PIN flow the spike performs itself** — print the `app.plex.tv/auth#?…` URL, poll `plex.tv/api/v2/pins/<id>`, cache the result next to the script for the revert run.
+- The test item is discovered by walking a shared show through `get_children_metadata` twice (show → season → episode), so no `rating_key` is hand-copied.
 
-const info = await (await fetch(
-  `${TAUTULLI_URL}/api/v2?apikey=${TAUTULLI_KEY}&cmd=get_server_info`
-)).json()
-const { pms_identifier, pms_url, pms_ip, pms_port, pms_ssl } = info.response.data
-console.log('machineId:', pms_identifier)
-console.log('pms_url  :', pms_url, '| ip/port/ssl:', pms_ip, pms_port, pms_ssl)
+Doing the sign-in here rather than pasting a token is not just convenience: it validates the PIN parameter set — the one mechanic the spec flagged as researched less deeply than the rest — **four tasks before Task 5 depends on it.** The client identifier must be cached, because a PIN created with one identifier and polled with another never returns a token; that is exactly why the real implementation persists `settings.plex_client_id`.
 
-const xml = await (await fetch(
-  `https://plex.tv/api/servers/${pms_identifier}/shared_servers?X-Plex-Token=${PLEX_OWNER_TOKEN}`
-)).text()
-console.log('\n--- shared_servers ---\n', xml.slice(0, 4000))
-
-for (const tag of xml.match(/<SharedServer\b[^>]*>/g) ?? []) {
-  console.log('user:', /\busername="([^"]*)"/.exec(tag)?.[1],
-              '| token?', /\baccessToken="([^"]*)"/.exec(tag)?.[1] ? 'YES' : 'NO')
-}
-
-const token = /\baccessToken="([^"]+)"/.exec(xml)?.[1]
-if (!token) {
-  console.log('\nFAIL: no accessToken in shared_servers — co-watchers are likely home/managed profiles.')
-} else {
-  const res = await fetch(
-    `${pms_url}/:/scrobble?key=${TEST_EPISODE_RATING_KEY}&identifier=com.plexapp.plugins.library`,
-    { headers: { 'X-Plex-Token': token, accept: 'application/json' } },
-  )
-  console.log('\nscrobble HTTP', res.status, res.status < 300 ? '(check that user\'s Plex now)' : '(FAIL)')
-}
-```
+The working script is already written at the path above. If it is missing, reconstruct it to do, in order: PIN sign-in → `get_server_info` → `shared_servers` → walk to an episode → `/:/scrobble` with the *borrowed* token, failing loudly at each step, with a `--revert` mode that re-runs the last call as `/:/unscrobble`.
 
 - [ ] **Step 2: Run it**
 
-Run: `node /tmp/plex-spike.mjs`
+Run: `node .superpowers/sdd/2026-07-27-plex-mark-watched/plex-spike.mjs`
 
-Record three answers:
-1. Does every co-watching username appear in `shared_servers` **with** an `accessToken`? If some are missing, they are home/managed profiles and rely on the manual override (Task 7) — note which.
-2. Did the scrobble return 2xx, and did that user's Plex actually flip to watched? **Verify in their Plex client, not just the status code.**
-3. Is `pms_url` present in `get_server_info`, or must it be rebuilt from `pms_ip`/`pms_port`/`pms_ssl`?
+Approve the printed link. Record four answers:
+1. Did the PIN flow return a token with `strong=true` plus the `X-Plex-Product` / `X-Plex-Client-Identifier` headers as sent? If the parameters needed changing, **Task 5's implementation must change to match.**
+2. Does every co-watching username appear in `shared_servers` **with** an `accessToken`? If some are missing, they are home/managed profiles and rely on the manual override (Task 7) — note which.
+3. Did the scrobble return 2xx, and did that user's Plex actually flip to watched? **Verify in their Plex client, not just the status code.**
+4. Is `pms_url` present in `get_server_info`, or must it be rebuilt from `pms_ip`/`pms_port`/`pms_ssl`?
 
 - [ ] **Step 3: Confirm no feedback loop**
 
 Open the bridge Dashboard and Tautulli's history. Confirm the step-2 scrobble produced **no** new Tautulli history row and **no** new bridge event. `/:/scrobble` creates no playback session, so none is expected — but this is the assumption that would cause an infinite fan-out if wrong.
 
-- [ ] **Step 4: Delete the spike**
+- [ ] **Step 4: Revert the test write, then delete the spike**
 
-Run: `rm /tmp/plex-spike.mjs`
-Expected: nothing to commit — `git status` clean.
+```bash
+node .superpowers/sdd/2026-07-27-plex-mark-watched/plex-spike.mjs --revert
+rm .superpowers/sdd/2026-07-27-plex-mark-watched/plex-spike.mjs \
+   .superpowers/sdd/2026-07-27-plex-mark-watched/.plex-token \
+   .superpowers/sdd/2026-07-27-plex-mark-watched/.plex-client
+```
+
+The revert un-marks the item so the spike leaves the co-watcher's library as it found it. Deleting `.plex-token` matters — it is a real Plex owner token cached in a scratch file. `git status` stays clean throughout, because `.superpowers/` is git-ignored.
 
 ---
 

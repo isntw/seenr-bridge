@@ -91,6 +91,15 @@ const subject = computed(() => {
   return null
 })
 
+// "2021 · movie · Anime Movies" reads as a stutter — the library name already says
+// what kind of thing it is. So prefer the library and fall back to the media type,
+// which is all edit mode has: a SharedRow carries no library.
+const subjectMeta = computed(() => {
+  const s = subject.value
+  if (!s) return ''
+  return [s.year, picked.value?.library_name || s.media_type].filter(Boolean).join(' · ')
+})
+
 // Falls back to the selected tab, not just the picked title. Before anything is
 // picked `subject` is null, and reading only from it made the backfill option show
 // the movie wording ("Mark it watched for everyone now") while the TV Shows tab
@@ -319,10 +328,7 @@ function submit() {
             <div v-else class="h-14 w-10 shrink-0 rounded bg-elevated ring-1 ring-default" />
             <div class="min-w-0 flex-1">
               <div class="truncate text-sm font-medium text-highlighted">{{ subject.title }}</div>
-              <div class="truncate text-xs text-dimmed">
-                {{ subject.year }} · {{ subject.media_type }}<template v-if="picked?.library_name">
-                  · {{ picked.library_name }}</template>
-              </div>
+              <div class="truncate text-xs text-dimmed">{{ subjectMeta }}</div>
             </div>
             <UButton
               v-if="!isEdit"

@@ -50,7 +50,7 @@ async function deliverToMapping(
       insertEvent({
         ts: now, action, event: built.event, username: mapping.username, media_type: meta.media_type,
         title: built.title, rating_key: ratingKey, ids: JSON.stringify(built.ids), image, series_key,
-        seenr_status: null, ok: 0, error: `Forward to seenr failed: ${msg}`, payload: JSON.stringify(built.payload),
+        seenr_status: null, plex_status: null, ok: 0, error: `Forward to seenr failed: ${msg}`, payload: JSON.stringify(built.payload),
       })
     return { ok: false }
   }
@@ -60,7 +60,7 @@ async function deliverToMapping(
     insertEvent({
       ts: now, action, event: built.event, username: mapping.username, media_type: meta.media_type,
       title: built.title, rating_key: ratingKey, ids: JSON.stringify(built.ids), image, series_key,
-      seenr_status: status, ok: ok ? 1 : 0,
+      seenr_status: status, plex_status: null, ok: ok ? 1 : 0,
       error: ok ? null : `seenr HTTP ${status} ${respBody?.slice(0, 200)}`.trim(), payload: JSON.stringify(built.payload),
     })
   return { ok, seenr_status: status }
@@ -83,7 +83,7 @@ export async function processEvent(
         ts: now, action: input.action, event: extra.event ?? null, username: input.username,
         media_type: extra.media_type ?? null, title: extra.title ?? null, rating_key: input.rating_key,
         ids: extra.ids ? JSON.stringify(extra.ids) : null, image: extra.image ?? null, series_key: null,
-        seenr_status: extra.seenr_status ?? null,
+        seenr_status: extra.seenr_status ?? null, plex_status: null,
         ok: 0, error: reason, payload: extra.payload ? JSON.stringify(extra.payload) : null,
       })
     return { ok: false, reason, ...extra }

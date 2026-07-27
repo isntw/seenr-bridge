@@ -8,6 +8,7 @@ export interface Settings {
   sync_episodes: boolean
   /** Tautulli section_ids to use. EMPTY MEANS ALL — never "none". */
   libraries: string[]
+  plex_token: string
 }
 
 export interface Mapping {
@@ -17,6 +18,7 @@ export interface Mapping {
   enabled: boolean
   sync_movies: boolean
   sync_episodes: boolean
+  plex_token: string
 }
 
 export interface ScrobbleEvent {
@@ -32,6 +34,7 @@ export interface ScrobbleEvent {
   image: string | null
   series_key: string | null
   seenr_status: number | null
+  plex_status: number | null
   ok: boolean
   error: string | null
   payload: string | null
@@ -157,6 +160,7 @@ export interface SharedTitle {
    *  existed and whose lookup hasn't succeeded yet — see /api/shared's backfill. */
   section_id: string | null
   library_name: string | null
+  plex_sync: boolean
   profiles: number[] // mapping ids
 }
 

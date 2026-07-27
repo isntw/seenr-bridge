@@ -53,7 +53,8 @@ CREATE TABLE IF NOT EXISTS mappings (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   username TEXT NOT NULL UNIQUE,
   seenr_token TEXT NOT NULL,
-  enabled INTEGER NOT NULL DEFAULT 1
+  enabled INTEGER NOT NULL DEFAULT 1,
+  plex_token TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS events (
@@ -67,6 +68,7 @@ CREATE TABLE IF NOT EXISTS events (
   rating_key TEXT,
   ids TEXT,
   seenr_status INTEGER,
+  plex_status INTEGER,
   ok INTEGER NOT NULL DEFAULT 0,
   error TEXT,
   payload TEXT
@@ -100,7 +102,8 @@ CREATE TABLE IF NOT EXISTS shared_titles (
   -- without this the row gives no clue why.
   section_id TEXT,
   library_name TEXT,
-  created INTEGER NOT NULL
+  created INTEGER NOT NULL,
+  plex_sync INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS shared_title_profiles (
   rating_key TEXT NOT NULL,
@@ -148,6 +151,28 @@ CREATE TABLE IF NOT EXISTS shared_title_profiles (
     db.exec('ALTER TABLE shared_titles ADD COLUMN section_id TEXT')
   if (!sharedCols.includes('library_name'))
     db.exec('ALTER TABLE shared_titles ADD COLUMN library_name TEXT')
+
+  if (!settingsCols.includes('plex_token'))
+    db.exec("ALTER TABLE settings ADD COLUMN plex_token TEXT NOT NULL DEFAULT ''")
+  // The X-Plex-Client-Identifier for the OAuth PIN flow. Deliberately NOT part of
+  // SettingsRow: creating a PIN and polling it must present the same value, which
+  // makes this infrastructure state rather than something an operator sets. Kept
+  // off the wire so it is never shipped to a browser.
+  if (!settingsCols.includes('plex_client_id'))
+    db.exec("ALTER TABLE settings ADD COLUMN plex_client_id TEXT NOT NULL DEFAULT ''")
+
+  if (!mappingCols.includes('plex_token'))
+    db.exec("ALTER TABLE mappings ADD COLUMN plex_token TEXT NOT NULL DEFAULT ''")
+
+  if (!eventCols.includes('plex_status'))
+    db.exec('ALTER TABLE events ADD COLUMN plex_status INTEGER')
+
+  // Defaults to 0, deliberately inverting the "empty means all" convention that
+  // settings.libraries uses. That convention is safe because it only ever widens
+  // forwarding; this one writes into OTHER PEOPLE'S Plex libraries, so an upgrade
+  // must not start doing that to titles shared months ago.
+  if (!sharedCols.includes('plex_sync'))
+    db.exec('ALTER TABLE shared_titles ADD COLUMN plex_sync INTEGER NOT NULL DEFAULT 0')
 }
 
 export interface SettingsRow {
@@ -160,6 +185,7 @@ export interface SettingsRow {
   sync_episodes: number
   /** JSON array of Tautulli section_ids. Empty string means every library. */
   libraries: string
+  plex_token: string
 }
 
 export interface MappingRow {
@@ -169,6 +195,7 @@ export interface MappingRow {
   enabled: number
   sync_movies: number
   sync_episodes: number
+  plex_token: string
 }
 
 export interface EventRowDb {
@@ -184,6 +211,7 @@ export interface EventRowDb {
   image: string | null
   series_key: string | null
   seenr_status: number | null
+  plex_status: number | null
   ok: number
   error: string | null
   payload: string | null
@@ -244,7 +272,7 @@ export function eventToWire(r: EventRowDb): ScrobbleEvent {
 export function getSettings(): SettingsRow {
   return useDb()
     .prepare(
-      'SELECT tautulli_url, tautulli_apikey, seenr_base_url, forward_enabled, bridge_url, sync_movies, sync_episodes, libraries FROM settings WHERE id = 1',
+      'SELECT tautulli_url, tautulli_apikey, seenr_base_url, forward_enabled, bridge_url, sync_movies, sync_episodes, libraries, plex_token FROM settings WHERE id = 1',
     )
     .get() as SettingsRow
 }
@@ -260,10 +288,11 @@ export function saveSettings(s: Partial<SettingsRow>): SettingsRow {
     sync_movies: s.sync_movies ?? cur.sync_movies,
     sync_episodes: s.sync_episodes ?? cur.sync_episodes,
     libraries: s.libraries ?? cur.libraries,
+    plex_token: s.plex_token ?? cur.plex_token,
   }
   useDb()
     .prepare(
-      'UPDATE settings SET tautulli_url=?, tautulli_apikey=?, seenr_base_url=?, forward_enabled=?, bridge_url=?, sync_movies=?, sync_episodes=?, libraries=? WHERE id=1',
+      'UPDATE settings SET tautulli_url=?, tautulli_apikey=?, seenr_base_url=?, forward_enabled=?, bridge_url=?, sync_movies=?, sync_episodes=?, libraries=?, plex_token=? WHERE id=1',
     )
     .run(
       next.tautulli_url,
@@ -274,8 +303,24 @@ export function saveSettings(s: Partial<SettingsRow>): SettingsRow {
       next.sync_movies,
       next.sync_episodes,
       next.libraries,
+      next.plex_token,
     )
   return next
+}
+
+/** The stable X-Plex-Client-Identifier for the OAuth PIN flow, generated on first
+ *  use. Separate from getSettings because the PIN create and PIN poll calls must
+ *  present the SAME identifier or plex.tv never hands back a token. */
+export function getPlexClientId(): string {
+  const db = useDb()
+  const row = db.prepare('SELECT plex_client_id FROM settings WHERE id = 1').get() as {
+    plex_client_id: string
+  }
+  if (row.plex_client_id) return row.plex_client_id
+
+  const id = crypto.randomUUID()
+  db.prepare('UPDATE settings SET plex_client_id = ? WHERE id = 1').run(id)
+  return id
 }
 
 export function listMappings(): MappingRow[] {
@@ -294,14 +339,20 @@ export function upsertMapping(
   enabled: number,
   sync_movies = 1,
   sync_episodes = 1,
+  // A caller that omits this RESETS the stored override, exactly as omitting
+  // sync_movies resets that flag. The UI always sends the whole mapping back, and
+  // the Add form omitting it is correct — a new mapping has no override.
+  plex_token = '',
 ): MappingRow {
   useDb()
     .prepare(
-      `INSERT INTO mappings (username, seenr_token, enabled, sync_movies, sync_episodes) VALUES (?, ?, ?, ?, ?)
+      `INSERT INTO mappings (username, seenr_token, enabled, sync_movies, sync_episodes, plex_token)
+       VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT(username) DO UPDATE SET seenr_token=excluded.seenr_token, enabled=excluded.enabled,
-       sync_movies=excluded.sync_movies, sync_episodes=excluded.sync_episodes`,
+       sync_movies=excluded.sync_movies, sync_episodes=excluded.sync_episodes,
+       plex_token=excluded.plex_token`,
     )
-    .run(username, seenr_token, enabled, sync_movies, sync_episodes)
+    .run(username, seenr_token, enabled, sync_movies, sync_episodes, plex_token)
   return getMappingByUsername(username)!
 }
 
@@ -326,6 +377,7 @@ export interface SharedTitleRow {
   section_id: string | null
   library_name: string | null
   created: number
+  plex_sync: number
 }
 
 export function sharedTitleToWire(r: SharedTitleRow, profiles: number[]): SharedTitle {
@@ -337,6 +389,7 @@ export function sharedTitleToWire(r: SharedTitleRow, profiles: number[]): Shared
     image: r.image,
     section_id: r.section_id,
     library_name: r.library_name,
+    plex_sync: !!r.plex_sync,
     profiles,
   }
 }
@@ -365,6 +418,7 @@ export function setSharedTitle(
     image?: string
     section_id?: string
     library_name?: string
+    plex_sync?: number
   },
   profiles: number[],
 ): void {
@@ -378,11 +432,14 @@ export function setSharedTitle(
     }
     // COALESCE on the library columns, not plain assignment: the edit modal saves a
     // profile change without a library (a SharedRow carries none), and overwriting
-    // with NULL there would erase what the add flow recorded.
+    // with NULL there would erase what the add flow recorded. plex_sync is a plain
+    // assignment instead — both the add flow and the edit modal always carry the
+    // checkbox state, so an absent value means "off", not "unknown".
     db.prepare(
-      `INSERT INTO shared_titles (rating_key, media_type, title, year, image, section_id, library_name, created)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO shared_titles (rating_key, media_type, title, year, image, section_id, library_name, created, plex_sync)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(rating_key) DO UPDATE SET media_type=excluded.media_type, title=excluded.title, year=excluded.year, image=excluded.image,
+         plex_sync=excluded.plex_sync,
          section_id=COALESCE(excluded.section_id, shared_titles.section_id),
          library_name=COALESCE(excluded.library_name, shared_titles.library_name)`,
     ).run(
@@ -394,6 +451,7 @@ export function setSharedTitle(
       t.section_id ?? null,
       t.library_name ?? null,
       Date.now(),
+      t.plex_sync ?? 0,
     )
     db.prepare('DELETE FROM shared_title_profiles WHERE rating_key = ?').run(t.rating_key)
     const ins = db.prepare('INSERT INTO shared_title_profiles (rating_key, mapping_id) VALUES (?, ?)')
@@ -420,13 +478,21 @@ export function getSharedRecipients(rating_key: string): MappingRow[] {
     .all(rating_key) as MappingRow[]
 }
 
+/** The share row itself. getSharedRecipients answers "who co-watches this"; this
+ *  answers "how is the share configured" — which the pipeline needs for plex_sync. */
+export function getSharedTitle(rating_key: string): SharedTitleRow | undefined {
+  return useDb()
+    .prepare('SELECT * FROM shared_titles WHERE rating_key = ?')
+    .get(rating_key) as SharedTitleRow | undefined
+}
+
 const MAX_EVENTS = 1000
 
 export function insertEvent(e: Omit<EventRowDb, 'id'>): number {
   const info = useDb()
     .prepare(
-      `INSERT INTO events (ts, action, event, username, media_type, title, rating_key, ids, image, series_key, seenr_status, ok, error, payload)
-       VALUES (@ts, @action, @event, @username, @media_type, @title, @rating_key, @ids, @image, @series_key, @seenr_status, @ok, @error, @payload)`,
+      `INSERT INTO events (ts, action, event, username, media_type, title, rating_key, ids, image, series_key, seenr_status, plex_status, ok, error, payload)
+       VALUES (@ts, @action, @event, @username, @media_type, @title, @rating_key, @ids, @image, @series_key, @seenr_status, @plex_status, @ok, @error, @payload)`,
     )
     .run(e)
   // keep only the newest MAX_EVENTS rows (no-op until the table exceeds the cap)

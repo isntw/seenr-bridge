@@ -150,9 +150,27 @@ function recipientStatus(r: EventRecipient) {
     <template #content>
       <!-- bg-default is darker than the card, matching the old bg-black/30 well. -->
       <div class="bg-default px-4 pb-4 sm:px-5">
-        <div class="mb-2 pt-3 text-xs text-dimmed">
-          rating_key {{ group.rating_key }} · action {{ group.action ?? '—' }} ·
-          event {{ group.event ?? '—' }} · ids: {{ group.ids.join(', ') || 'none' }}
+        <div class="pt-3 text-xs text-dimmed">
+          rating_key {{ group.rating_key }} · {{ group.action ?? '—' }} ·
+          {{ group.event ?? '—' }}
+        </div>
+
+        <!-- The ids were the reason that line ran on: three of them, each long
+             enough to wrap, inside a sentence. As badges they wrap as units and
+             stay individually readable — and they are the part you actually came
+             here to check, since a wrong id is the bug this bridge exists to fix. -->
+        <div class="mb-3 mt-1.5 flex flex-wrap gap-1.5">
+          <UBadge
+            v-for="id in group.ids"
+            :key="id"
+            as="code"
+            color="neutral"
+            variant="subtle"
+            size="sm"
+            class="font-mono"
+            :label="id"
+          />
+          <span v-if="!group.ids.length" class="text-xs text-warning">no external ids</span>
         </div>
 
         <!-- One block per recipient: each had its own HTTP call, its own status and

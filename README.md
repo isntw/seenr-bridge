@@ -106,6 +106,8 @@ That's it — play something past the watched threshold and it appears on the Da
 
 The **Shared** page is for titles more than one person watches together. Add a title, tick who watches it, and a watch by any assigned profile checks in for all of them.
 
+![The Shared page](docs/shared.png)
+
 - **Add title** opens a picker — search your TV or movie library, tick the profiles, and choose what to do about watches that already happened: sync them all retroactively, or start from now.
 - Clicking a row opens the same modal to change who it's shared with, re-run a retroactive sync, or remove it.
 

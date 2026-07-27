@@ -17,10 +17,6 @@ defineProps<{
 
 defineEmits<{ edit: [] }>()
 
-function initials(name: string) {
-  return name.slice(0, 2).toUpperCase()
-}
-
 /** Only the profiles this title is actually shared with — an unassigned user is
  *  absent rather than shown greyed out, since the row is a summary, not a form. */
 function assigned(mappings: Mapping[], profiles: number[]) {
@@ -64,9 +60,8 @@ function assigned(mappings: Mapping[], profiles: number[]) {
       </div>
 
       <!-- Static badges, deliberately not UButtons: they report who this is shared
-           with, they don't change it. UBadge's own `avatar` prop carries the
-           initials, so the badge theme sizes the avatar instead of a hand-tuned
-           override, and these match the show/movie badge above. -->
+           with, they don't change it. Just the username — an initials avatar in
+           front of a name it already spells out earns nothing. -->
       <div class="mt-2 flex flex-wrap gap-1.5">
         <UBadge
           v-for="m in assigned(mappings, row.profiles)"
@@ -74,7 +69,6 @@ function assigned(mappings: Mapping[], profiles: number[]) {
           color="primary"
           variant="subtle"
           size="sm"
-          :avatar="{ text: initials(m.username) }"
           :label="m.username"
         />
 

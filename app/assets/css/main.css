@@ -40,8 +40,10 @@ body {
      bg-white/[0.02]; code chips and placeholders use it solid, landing on the
      old bg-white/5. */
   --ui-bg-elevated: #161b26;
-  /* --ui-bg-muted and --ui-bg-inverted are left alone: bg-inverted is white in
-     dark mode and the profile chips' bg-inverted/15 tint depends on that. */
+  /* --ui-bg-muted and --ui-bg-inverted are left alone. Nothing in app/ reads them
+     directly any more — the profile chips that tinted themselves bg-inverted/15
+     went when their initials avatars did — but they still back Nuxt UI's own
+     inverted surfaces, so retuning them would shift components silently. */
 
   /* The old design outlined everything with translucent white rather than a
      flat grey, which is what keeps a card readable both on the page and on top

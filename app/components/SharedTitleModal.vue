@@ -218,10 +218,6 @@ function toggleProfile(id: number, checked: boolean) {
   }
 }
 
-function initials(name: string) {
-  return name.slice(0, 2).toUpperCase()
-}
-
 function posterFor(image: string | null | undefined) {
   return image ? `/api/image?path=${encodeURIComponent(image)}` : null
 }
@@ -350,23 +346,16 @@ function submit() {
             {{ isEdit ? 'Shared with' : '2 · Share with' }}
           </h3>
           <div class="space-y-1">
+            <!-- Plain label, so the checkbox uses UCheckbox's own typography rather
+                 than a nested span — and no initials avatar in front of a name the
+                 row already spells out. -->
             <UCheckbox
               v-for="m in props.mappings"
               :key="m.id"
+              :label="m.username"
               :model-value="profileIds.includes(m.id)"
               @update:model-value="(v) => toggleProfile(m.id, v === true)"
-            >
-              <template #label>
-                <span class="flex items-center gap-2">
-                  <UAvatar
-                    :text="initials(m.username)"
-                    size="2xs"
-                    :ui="{ root: 'bg-inverted/15', fallback: 'text-inherit text-[9px]' }"
-                  />
-                  <span class="text-sm">{{ m.username }}</span>
-                </span>
-              </template>
-            </UCheckbox>
+            />
           </div>
           <p v-if="subject && profileIds.length === 1" class="mt-2 text-xs text-warning">
             Only one profile selected — co-watching needs at least two to be useful.

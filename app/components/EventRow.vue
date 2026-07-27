@@ -74,14 +74,16 @@ function recipientStatus(r: EventRecipient) {
 </script>
 
 <template>
-  <div>
+  <!-- unmountOnHide left at its default here, unlike SetupSubsection: the panel is
+       read-only detail, so there is no input state to preserve, and keeping every
+       row's payload <pre> mounted would mean rendering up to 1000 of them. -->
+  <UCollapsible v-model:open="open">
     <!-- Geometry, hover and focus are deliberately identical to SharedTitleRow so
-         the two lists read as one system. -->
+         the two lists read as one system. as-child makes this button the trigger,
+         so reka-ui owns aria-expanded and pairs it with aria-controls. -->
     <button
       type="button"
       class="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-elevated/40 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary-400 sm:px-5"
-      :aria-expanded="open"
-      @click="open = !open"
     >
       <img
         v-if="group.image"
@@ -145,31 +147,33 @@ function recipientStatus(r: EventRecipient) {
       />
     </button>
 
-    <!-- bg-default is darker than the card, matching the old bg-black/30 well. -->
-    <div v-if="open" class="bg-default px-4 pb-4 sm:px-5">
-      <div class="mb-2 pt-3 text-xs text-dimmed">
-        rating_key {{ group.rating_key }} · action {{ group.action ?? '—' }} ·
-        event {{ group.event ?? '—' }} · ids: {{ group.ids.join(', ') || 'none' }}
-      </div>
+    <template #content>
+      <!-- bg-default is darker than the card, matching the old bg-black/30 well. -->
+      <div class="bg-default px-4 pb-4 sm:px-5">
+        <div class="mb-2 pt-3 text-xs text-dimmed">
+          rating_key {{ group.rating_key }} · action {{ group.action ?? '—' }} ·
+          event {{ group.event ?? '—' }} · ids: {{ group.ids.join(', ') || 'none' }}
+        </div>
 
-      <!-- One block per recipient: each had its own HTTP call, its own status and
-           its own error, so collapsing them would hide which profile broke. -->
-      <div class="space-y-3">
-        <div v-for="r in group.recipients" :key="r.id">
-          <div class="mb-1 flex flex-wrap items-center gap-2">
-            <span class="text-xs font-medium text-default">{{ r.username }}</span>
-            <UBadge
-              :color="r.ok ? 'success' : 'error'"
-              variant="subtle"
-              size="sm"
-              :label="recipientStatus(r)"
-            />
+        <!-- One block per recipient: each had its own HTTP call, its own status and
+             its own error, so collapsing them would hide which profile broke. -->
+        <div class="space-y-3">
+          <div v-for="r in group.recipients" :key="r.id">
+            <div class="mb-1 flex flex-wrap items-center gap-2">
+              <span class="text-xs font-medium text-default">{{ r.username }}</span>
+              <UBadge
+                :color="r.ok ? 'success' : 'error'"
+                variant="subtle"
+                size="sm"
+                :label="recipientStatus(r)"
+              />
+            </div>
+            <UAlert v-if="r.error" color="error" variant="subtle" class="mb-2" :description="r.error" />
+            <!-- Ringed, because the panel behind it is already bg-default. -->
+            <pre class="max-h-64 overflow-auto rounded-lg bg-default p-3 text-xs ring-1 ring-default">{{ pretty(r.payload) }}</pre>
           </div>
-          <UAlert v-if="r.error" color="error" variant="subtle" class="mb-2" :description="r.error" />
-          <!-- Ringed, because the panel behind it is already bg-default. -->
-          <pre class="max-h-64 overflow-auto rounded-lg bg-default p-3 text-xs ring-1 ring-default">{{ pretty(r.payload) }}</pre>
         </div>
       </div>
-    </div>
-  </div>
+    </template>
+  </UCollapsible>
 </template>

@@ -7,6 +7,9 @@ import {
   getPlexAccount,
   resolvePlexToken,
   resetPlexTokenCache,
+  startPinLogin,
+  pollPinLogin,
+  plexAuthUrl,
 } from '../server/utils/plex'
 
 const fetchMock = vi.fn()
@@ -295,5 +298,59 @@ describe('resolvePlexToken', () => {
     await expect(resolvePlexToken('nobody', '', 'm', 'owner-tok')).resolves.toBeNull()
     // A genuinely shared user still resolves normally — the guard must not break discovery.
     await expect(resolvePlexToken('ana', '', 'm', 'owner-tok')).resolves.toBe('ana-tok')
+  })
+})
+
+describe('OAuth PIN login', () => {
+  it('creates a strong PIN with the client identifier and product', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: 12345, code: 'ABCD', authToken: null }),
+    } as unknown as Response)
+
+    const pin = await startPinLogin('client-uuid')
+
+    expect(pin).toEqual({ id: '12345', code: 'ABCD' })
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('https://plex.tv/api/v2/pins?strong=true')
+    expect(init.method).toBe('POST')
+    const headers = init.headers as Record<string, string>
+    expect(headers['X-Plex-Client-Identifier']).toBe('client-uuid')
+    expect(headers['X-Plex-Product']).toBe('Seenr Bridge')
+  })
+
+  it('throws when plex.tv rejects the PIN request', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 500 } as unknown as Response)
+
+    await expect(startPinLogin('c')).rejects.toThrow('plex.tv HTTP 500')
+  })
+
+  it('returns null while the PIN is still unclaimed', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: 12345, code: 'ABCD', authToken: null }),
+    } as unknown as Response)
+
+    await expect(pollPinLogin('client-uuid', '12345')).resolves.toBeNull()
+  })
+
+  it('returns the token once the PIN is claimed, polling with the SAME client id', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: 12345, code: 'ABCD', authToken: 'owner-token' }),
+    } as unknown as Response)
+
+    await expect(pollPinLogin('client-uuid', '12345')).resolves.toBe('owner-token')
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('https://plex.tv/api/v2/pins/12345')
+    // A different identifier here than the one that created the PIN never returns a token.
+    expect((init.headers as Record<string, string>)['X-Plex-Client-Identifier']).toBe('client-uuid')
+  })
+
+  it('builds the sign-in URL the operator visits', () => {
+    expect(plexAuthUrl('client-uuid', 'ABCD')).toBe(
+      'https://app.plex.tv/auth#?clientID=client-uuid&code=ABCD&context%5Bdevice%5D%5Bproduct%5D=Seenr+Bridge',
+    )
   })
 })

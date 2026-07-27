@@ -17,6 +17,7 @@ export default defineEventHandler(async (event): Promise<Mapping> => {
       b.enabled === false ? 0 : 1,
       b.sync_movies === false ? 0 : 1,
       b.sync_episodes === false ? 0 : 1,
+      typeof b.plex_token === 'string' ? b.plex_token.trim() : '',
     ),
   )
 })

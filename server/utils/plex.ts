@@ -157,3 +157,54 @@ export async function resolvePlexToken(
   if (tokenCache.owner && wanted === tokenCache.owner) return ownerToken
   return tokenCache.tokens.get(wanted) ?? null
 }
+
+const PLEX_PRODUCT = 'Seenr Bridge'
+
+interface PlexPin {
+  id?: number | string
+  code?: string
+  authToken?: string | null
+}
+
+// plex.tv's OAuth PIN flow. The client identifier passed here MUST be the same value
+// used to poll the PIN later, or plex.tv never returns a token — which is why it is
+// persisted rather than generated per request.
+function pinHeaders(clientId: string): Record<string, string> {
+  return {
+    accept: 'application/json',
+    'X-Plex-Product': PLEX_PRODUCT,
+    'X-Plex-Client-Identifier': clientId,
+  }
+}
+
+export async function startPinLogin(clientId: string): Promise<{ id: string; code: string }> {
+  const res = await fetch(`${PLEX_TV}/api/v2/pins?strong=true`, {
+    method: 'POST',
+    headers: pinHeaders(clientId),
+  })
+  if (!res.ok) throw new Error(`plex.tv HTTP ${res.status}`)
+
+  const pin = (await res.json()) as PlexPin
+  if (!pin?.id || !pin?.code) throw new Error('plex.tv returned no PIN')
+  return { id: String(pin.id), code: String(pin.code) }
+}
+
+/** The owner's token once they approve the PIN, or null while it is still pending. */
+export async function pollPinLogin(clientId: string, id: string): Promise<string | null> {
+  const res = await fetch(`${PLEX_TV}/api/v2/pins/${encodeURIComponent(id)}`, {
+    headers: pinHeaders(clientId),
+  })
+  if (!res.ok) throw new Error(`plex.tv HTTP ${res.status}`)
+
+  const pin = (await res.json()) as PlexPin
+  return pin?.authToken || null
+}
+
+export function plexAuthUrl(clientId: string, code: string): string {
+  const q = new URLSearchParams({
+    clientID: clientId,
+    code,
+    'context[device][product]': PLEX_PRODUCT,
+  })
+  return `https://app.plex.tv/auth#?${q.toString()}`
+}

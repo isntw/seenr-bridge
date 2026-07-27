@@ -336,15 +336,11 @@ function submit() {
           <h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
             {{ isEdit ? 'Plex' : '3 · Plex' }}
           </h3>
-          <UCheckbox
+          <USwitch
             v-model="plexSync"
-            label="Also mark watched in Plex"
+            label="Mark watched in Plex too"
             :disabled="!plexConnected"
-            :description="
-              plexConnected
-                ? 'Each co-watcher\'s own Plex copy is marked watched too. Whoever pressed play is skipped — theirs already is.'
-                : 'Connect a Plex account under Settings first.'
-            "
+            :description="plexConnected ? 'Whoever pressed play is skipped.' : 'Connect Plex in Settings first.'"
           />
         </section>
 

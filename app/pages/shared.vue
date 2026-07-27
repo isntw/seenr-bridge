@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { BackfillResult, Mapping, SharedTitle } from '../../shared/types'
+import type { BackfillResult, Mapping, PlexLinkStatus, SharedTitle } from '../../shared/types'
 import type { SharedRow, SharedTitlePayload } from '../utils/shared-row'
 import { apiErrorMessage } from '../../shared/errors'
 
@@ -13,6 +13,12 @@ const { data: mappings, status: mappingsStatus } = useAsyncData<Mapping[]>(
   'mappings',
   () => $fetch('/api/mappings'),
   { default: (): Mapping[] => [], lazy: true },
+)
+
+const { data: plexLink } = useAsyncData<PlexLinkStatus>(
+  'plex-link',
+  () => $fetch('/api/plex/users'),
+  { default: (): PlexLinkStatus => ({ connected: false, matched: [], unmatched: [] }), lazy: true },
 )
 
 const loading = isFirstLoad(sharedStatus, mappingsStatus)
@@ -41,6 +47,7 @@ const rows = computed<SharedRow[]>(() =>
       isShow: s.media_type === 'show',
       profiles: s.profiles,
       isShared: s.profiles.length > 0,
+      plex_sync: s.plex_sync,
     })),
 )
 
@@ -82,6 +89,7 @@ async function saveTitle(p: SharedTitlePayload) {
         section_id: p.section_id,
         library_name: p.library_name,
         profiles: p.profiles,
+        plex_sync: p.plex_sync,
       },
     })
   } catch (e) {
@@ -203,6 +211,7 @@ async function removeTitle(ratingKey: string) {
       :shared-keys="sharedKeys"
       :row="editing"
       :busy="busy"
+      :plex-connected="plexLink.connected"
       @submit="saveTitle"
       @remove="removeTitle"
     />

@@ -9,6 +9,7 @@ export interface SharedTitlePayload {
   library_name?: string
   profiles: number[]
   syncPrevious: boolean
+  plex_sync: boolean
 }
 
 export interface SharedRow {
@@ -23,4 +24,5 @@ export interface SharedRow {
   isShow: boolean
   profiles: number[]
   isShared: boolean
+  plex_sync: boolean
 }

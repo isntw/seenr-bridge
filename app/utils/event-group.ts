@@ -5,6 +5,7 @@ export interface EventRecipient {
   username: string | null
   ok: boolean
   seenr_status: number | null
+  plex_status: number | null
   error: string | null
   payload: string | null
 }
@@ -54,6 +55,7 @@ export function groupEvents(events: ScrobbleEvent[]): EventGroup[] {
       username: e.username,
       ok: e.ok,
       seenr_status: e.seenr_status,
+      plex_status: e.plex_status,
       error: e.error,
       payload: e.payload,
     })

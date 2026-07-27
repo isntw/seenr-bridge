@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import type { Settings, Mapping, SyncResult } from '../../shared/types'
+import type { Settings, Mapping, SyncResult, LibrarySection } from '../../shared/types'
 
 export const useSettingsStore = defineStore('settings', () => {
   const settings = ref<Settings | null>(null)
@@ -58,13 +58,30 @@ export const useSettingsStore = defineStore('settings', () => {
     })
   }
 
+  // The library sections Tautulli monitors. Kept out of `settings` because it is
+  // live data read from Tautulli, not something we persist — only the operator's
+  // selection of section_ids is stored.
+  const tautulliLibraries = ref<LibrarySection[]>([])
+  const librariesError = ref<string | null>(null)
+
+  async function fetchLibraries() {
+    const r = await $fetch<{ ok: boolean; items: LibrarySection[]; error?: string }>(
+      '/api/tautulli/libraries',
+    )
+    tautulliLibraries.value = r.items
+    librariesError.value = r.ok
+      ? null
+      : r.error || 'Tautulli isn’t configured yet — add its URL and API key above.'
+  }
+
   async function fetchTautulliUsers() {
     const r = await $fetch<{ ok: boolean; users: string[] }>('/api/tautulli/users')
     tautulliUsers.value = r.users
   }
 
   return {
-    settings, mappings, tautulliUsers,
-    fetch, save, setForwarding, saveMapping, removeMapping, testTautulli, syncWebhook, fetchTautulliUsers,
+    settings, mappings, tautulliUsers, tautulliLibraries, librariesError,
+    fetch, save, setForwarding, saveMapping, removeMapping, testTautulli, syncWebhook,
+    fetchTautulliUsers, fetchLibraries,
   }
 })

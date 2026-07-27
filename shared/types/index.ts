@@ -6,6 +6,8 @@ export interface Settings {
   bridge_url: string
   sync_movies: boolean
   sync_episodes: boolean
+  /** Tautulli section_ids to use. EMPTY MEANS ALL — never "none". */
+  libraries: string[]
 }
 
 export interface Mapping {
@@ -59,6 +61,9 @@ export interface AuthStatus {
 
 export interface TautulliMetadata {
   media_type: string
+  /** Set by get_metadata; the library the item belongs to. */
+  section_id?: string | number
+  library_name?: string
   rating_key: string
   title: string
   grandparent_title: string
@@ -102,6 +107,14 @@ export interface SyncResult {
   notifier_id?: number
   created?: boolean
   error?: string
+}
+
+/** One Tautulli library section, for the Settings library chooser. */
+export interface LibrarySection {
+  section_id: string
+  section_name: string
+  section_type: string
+  count: number
 }
 
 export interface LibraryItem {

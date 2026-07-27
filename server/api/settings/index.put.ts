@@ -6,6 +6,14 @@ function validate(raw: unknown): Partial<SettingsRow> {
   const str = (v: unknown) => (typeof v === 'string' ? v.trim() : undefined)
   const bool = (v: unknown) => (v === undefined ? undefined : v ? 1 : 0)
 
+  // The wire form is a string[]; storage is JSON in one TEXT column. Anything
+  // that isn't an array is left `undefined` so saveSettings keeps the current
+  // value rather than wiping the selection — same contract as every other field
+  // here, which is what lets a partial PUT stay safe.
+  const libraries = Array.isArray(b.libraries)
+    ? JSON.stringify(b.libraries.map(String))
+    : undefined
+
   return {
     tautulli_url: str(b.tautulli_url),
     tautulli_apikey: str(b.tautulli_apikey),
@@ -14,6 +22,7 @@ function validate(raw: unknown): Partial<SettingsRow> {
     forward_enabled: bool(b.forward_enabled),
     sync_movies: bool(b.sync_movies),
     sync_episodes: bool(b.sync_episodes),
+    libraries,
   }
 }
 

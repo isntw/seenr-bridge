@@ -11,6 +11,11 @@ await store.fetch()
 onMounted(() => {
   status.start()
   store.fetchTautulliUsers().catch(() => {})
+  // Seed the checkboxes from what is stored, then ask Tautulli what libraries
+  // exist. Both are best-effort: an unreachable Tautulli shows an inline note
+  // rather than breaking the page.
+  librarySel.value = [...(store.settings?.libraries ?? [])]
+  store.fetchLibraries().catch(() => {})
 })
 onBeforeUnmount(() => status.stop())
 
@@ -76,6 +81,85 @@ function syncSummary(m: Mapping) {
   if (m.sync_episodes) return 'TV only'
   if (m.sync_movies) return 'Movies only'
   return 'nothing selected'
+}
+
+// Whether step 1's sub-sections start folded. Deliberately keyed off the SAVED
+// settings rather than the live status poll: settings are available synchronously
+// after the initial fetch, so the decision is made once and is the same on every
+// load. Keying it off `status.tautulli` would mean the first paint always looks
+// unconfigured (no poll has returned yet), so nothing would ever start collapsed.
+const isConfigured = computed(
+  () => !!store.settings?.tautulli_url && !!store.settings?.tautulli_apikey,
+)
+
+const connSummary = computed(() => {
+  const raw = store.settings?.tautulli_url
+  if (!raw) return 'not set'
+  try {
+    return new URL(raw).host
+  } catch {
+    return raw
+  }
+})
+
+const triggerSummary = computed(() =>
+  selectedTriggers.value.length ? selectedTriggers.value.join(', ') : 'none selected',
+)
+
+// ── Library selection ───────────────────────────────────────────────────────
+// An empty selection means EVERY library, here and server-side, so upgrading
+// never silently stops forwarding. The UI shows "all ticked" for an empty
+// selection, and saving with everything ticked stores [] rather than an
+// exhaustive list — so a library you add in Plex later is included automatically
+// instead of being silently excluded.
+const librarySel = ref<string[]>([])
+const librariesBusy = ref(false)
+
+const libsSorted = computed(() =>
+  [...store.tautulliLibraries].sort(
+    (a, b) =>
+      a.section_type.localeCompare(b.section_type) || a.section_name.localeCompare(b.section_name),
+  ),
+)
+
+function isLibOn(id: string) {
+  return librarySel.value.length === 0 || librarySel.value.includes(id)
+}
+
+function toggleLib(id: string, on: boolean) {
+  // The first interaction on an empty (= all) selection has to materialise the
+  // full list first, or unticking one would read as "select only that one".
+  const base = librarySel.value.length
+    ? librarySel.value
+    : libsSorted.value.map((l) => l.section_id)
+  librarySel.value = on ? [...new Set([...base, id])] : base.filter((x) => x !== id)
+}
+
+const allLibsOn = computed(
+  () => librarySel.value.length === 0 || librarySel.value.length === libsSorted.value.length,
+)
+
+function setAllLibs(on: boolean) {
+  librarySel.value = on ? [] : ['__none__']
+}
+
+async function saveLibraries() {
+  librariesBusy.value = true
+  try {
+    const value = allLibsOn.value ? [] : librarySel.value.filter((x) => x !== '__none__')
+    await store.save({ libraries: value })
+    librarySel.value = value
+    toast.add({
+      title: value.length
+        ? `Using ${value.length} of ${libsSorted.value.length} libraries.`
+        : 'Using all libraries.',
+      color: 'success',
+    })
+  } catch (e) {
+    toast.add({ title: apiErrorMessage(e, 'Could not save the library selection.'), color: 'error' })
+  } finally {
+    librariesBusy.value = false
+  }
 }
 
 // Sub-section pills read the same polled status the header and sidebar use — no
@@ -278,7 +362,14 @@ async function runTest(dryRun: boolean) {
     </div>
 
     <SetupStep :n="1" title="Tautulli" hint="the source — where playback happens and episode IDs come from">
-      <SetupSubsection label="Connection" :status="connStatus" :status-text="connStatusText">
+      <SetupSubsection
+        label="Connection"
+        :status="connStatus"
+        :status-text="connStatusText"
+        collapsible
+        :start-open="!isConfigured"
+        :summary="connSummary"
+      >
         <div class="grid gap-4 sm:grid-cols-2 sm:items-end">
           <UFormField label="Tautulli URL">
             <UInput v-model="store.settings.tautulli_url" placeholder="http://tautulli:8181" class="w-full" />
@@ -318,7 +409,80 @@ async function runTest(dryRun: boolean) {
         </div>
       </SetupSubsection>
 
-      <SetupSubsection label="Event webhook" :status="hookStatus" :status-text="hookStatusText" seam>
+      <!-- Libraries sit between Connection and Event webhook because that is the
+           order you actually do things: connect, choose what to read, then wire up
+           events. Selecting nothing means everything. -->
+      <SetupSubsection
+        label="Libraries"
+        :status="libsSorted.length ? 'ok' : 'pending'"
+        :status-text="libsSorted.length ? (allLibsOn ? 'all' : `${librarySel.length} of ${libsSorted.length}`) : '—'"
+        seam
+        collapsible
+        :start-open="false"
+        :summary="allLibsOn ? 'every library' : `${librarySel.length} selected`"
+      >
+        <p class="text-xs text-dimmed">
+          Which Plex libraries to read titles from, and to forward playback for. Leave everything
+          ticked to use them all — new libraries are then included automatically.
+        </p>
+
+        <UAlert
+          v-if="store.librariesError"
+          color="warning"
+          variant="subtle"
+          :description="store.librariesError"
+        />
+
+        <p v-else-if="!libsSorted.length" class="text-xs text-muted">Loading libraries…</p>
+
+        <template v-else>
+          <div class="space-y-1.5">
+            <label
+              v-for="l in libsSorted"
+              :key="l.section_id"
+              class="flex items-center gap-2.5 rounded-lg bg-default px-3 py-2 ring-1 ring-default"
+            >
+              <UCheckbox
+                :model-value="isLibOn(l.section_id)"
+                @update:model-value="(v) => toggleLib(l.section_id, v === true)"
+              />
+              <span class="truncate text-sm text-default">{{ l.section_name }}</span>
+              <UBadge
+                :color="l.section_type === 'movie' ? 'info' : 'primary'"
+                variant="subtle"
+                size="sm"
+                :label="l.section_type"
+              />
+              <UBadge v-if="!l.count" color="neutral" variant="subtle" size="sm" label="empty" />
+              <span class="ml-auto shrink-0 font-mono text-xs text-dimmed">{{ l.count }}</span>
+            </label>
+          </div>
+
+          <div class="flex flex-col gap-3 pt-1 sm:flex-row sm:items-center">
+            <div class="flex gap-3 text-xs">
+              <ULink class="text-primary" @click="setAllLibs(true)">Select all</ULink>
+              <ULink class="text-primary" @click="setAllLibs(false)">None</ULink>
+              <ULink class="text-primary" @click="store.fetchLibraries()">Refresh</ULink>
+            </div>
+            <UButton
+              :loading="librariesBusy"
+              label="Save libraries"
+              class="justify-center sm:ml-auto"
+              @click="saveLibraries"
+            />
+          </div>
+        </template>
+      </SetupSubsection>
+
+      <SetupSubsection
+        label="Event webhook"
+        :status="hookStatus"
+        :status-text="hookStatusText"
+        seam
+        collapsible
+        :start-open="!isConfigured"
+        :summary="triggerSummary"
+      >
         <p class="text-xs text-dimmed">
           One webhook in Tautulli covers every user. <strong class="text-default">Watched</strong> is
           the recommended trigger.

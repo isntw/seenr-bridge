@@ -198,9 +198,22 @@ export async function getLibraries(url: string, apiKey: string): Promise<Tautull
 export async function getLibraryItems(
   url: string,
   apiKey: string,
-  opts: { type: 'show' | 'movie'; search?: string; start?: number; length?: number },
+  opts: {
+    type: 'show' | 'movie'
+    search?: string
+    start?: number
+    length?: number
+    /** Tautulli section_ids the operator selected in Settings. EMPTY MEANS ALL —
+     *  the same convention the settings column uses, so an unconfigured install
+     *  keeps browsing everything. Without this, every section of a type is merged,
+     *  which lists a title once per library that contains it. */
+    sections?: string[]
+  },
 ): Promise<{ items: LibraryItem[]; total: number }> {
-  const sections = (await getLibraries(url, apiKey)).filter((l) => l.section_type === opts.type)
+  const allowed = opts.sections ?? []
+  const sections = (await getLibraries(url, apiKey))
+    .filter((l) => l.section_type === opts.type)
+    .filter((l) => !allowed.length || allowed.includes(l.section_id))
   const search = (opts.search || '').trim()
   const all: LibraryItem[] = []
   for (const sec of sections) {

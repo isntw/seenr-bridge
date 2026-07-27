@@ -25,7 +25,7 @@ npm run dev         # nuxt dev, single process, http://localhost:8687
 npm run build        # nuxt build → .output/ (bundled Nitro server + static client)
 npm run preview       # preview the .output/ build
 npm start            # node .output/server/index.mjs — runs a prior build
-npm test              # vitest run — tests/**/*.spec.ts, 66 tests across 6 files
+npm test              # vitest run — tests/**/*.spec.ts, 81 tests across 6 files
 npm run test:watch     # vitest, watch mode
 npm run typecheck       # nuxt typecheck (app/ + server/ + shared/) && typecheck:tests (tests/ + vitest.config.ts)
 npm run typecheck:tests  # vue-tsc -p tsconfig.test.json alone — tests/ isn't in nuxt's own generated tsconfig
@@ -59,6 +59,7 @@ This is a single Nuxt 4 application (SPA mode, no SSR — it's a login-gated LAN
 - **A misspelled Nuxt UI component name passes `typecheck` AND `build`, then renders nothing.** `vue-tsc` does not flag unknown global components, so the only reliable check is `.nuxt/components.d.ts`. This is not hypothetical: Nuxt UI v4 renamed `UButtonGroup` to **`UFieldGroup`**, and the old name silently produced an invisible segmented control on the Shared page. Grep `.nuxt/components.d.ts` for any component you are using for the first time.
 - **The webhook replies `202` before processing.** `processEvent()` runs detached (via `event.waitUntil`) with a swallowed `.catch()`, so failures surface only as rows in the `events` table (visible on the Dashboard) — never as an HTTP error to Tautulli. Debug forwarding problems through `/api/events`, not response codes.
 - **`settings.sync_movies` / `settings.sync_episodes` are vestigial.** They're persisted and served by the settings API but the pipeline gates only on the **per-mapping** `mapping.sync_movies` / `mapping.sync_episodes`. Edit the mapping-level flags when changing sync behaviour.
+- **An empty `settings.libraries` means *every* library, not none.** The column defaults to `''`, so an existing install upgrades to "all libraries selected" without a migration step, and the UI saves `[]` back when every box is ticked so libraries added in Tautulli later are included automatically. `parseLibraries()` in `db.ts` is deliberately tolerant — `''`, `null`, malformed JSON and a non-array payload all collapse to `[]`. The filter is applied **server-side in `server/api/tautulli/library.get.ts`**, so both item pickers inherit the selection without knowing the setting exists, and again in `pipeline.ts` as a gate that *records* the skip (unlike the unmapped-user case, which returns silently) — sitting after the `dryRun` return so Preview is never blocked.
 - **`shared/version.ts` is the single source of truth for the version** (served at `/api/version`, shown in sidebar + login). Bump it on release, along with the README badge.
 - **`/api/image` must keep its `/library/metadata/` prefix check.** It proxies Plex poster art via Tautulli so the API key stays server-side; without that check the endpoint becomes an open proxy authenticated with the user's Tautulli API key.
 - **`syncSeenrWebhook` is authoritative on re-sync**: it writes `on_<action> = 0` for every unselected trigger, so a sync always fully replaces the notifier's trigger set. It finds its notifier by the literal friendly name `Seenr Bridge`.

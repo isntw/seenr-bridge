@@ -332,3 +332,96 @@ describe('backfillSharedTitle', () => {
     expect(forwardToSeenr).not.toHaveBeenCalled()
   })
 })
+
+describe('processEvent library gate', () => {
+  // The fixture metadata carries no section_id by default, so each test sets the
+  // one it needs. Empty selection must behave as "all libraries" — that is what
+  // keeps an upgrade from silently stopping every scrobble.
+  it('forwards everything when no libraries are selected', async () => {
+    const { db, pipeline } = await configured()
+    db.upsertMapping('alice', 'tok', 1, 1, 1)
+    getMetadata.mockImplementation(async () => ({ ...meta, section_id: '5' }))
+
+    const r = await pipeline.processEvent(input)
+
+    expect(r.ok).toBe(true)
+    expect(forwardToSeenr).toHaveBeenCalledOnce()
+  })
+
+  it('forwards when the item is in a selected library', async () => {
+    const { db, pipeline } = await configured()
+    db.upsertMapping('alice', 'tok', 1, 1, 1)
+    db.saveSettings({ libraries: JSON.stringify(['5', '2']) })
+    getMetadata.mockImplementation(async () => ({ ...meta, section_id: '2' }))
+
+    const r = await pipeline.processEvent(input)
+
+    expect(r.ok).toBe(true)
+    expect(forwardToSeenr).toHaveBeenCalledOnce()
+  })
+
+  it('does NOT forward when the item is in an unselected library', async () => {
+    const { db, pipeline } = await configured()
+    db.upsertMapping('alice', 'tok', 1, 1, 1)
+    db.saveSettings({ libraries: JSON.stringify(['2']) })
+    getMetadata.mockImplementation(async () => ({ ...meta, section_id: '5', library_name: 'Filme' }))
+
+    const r = await pipeline.processEvent(input)
+
+    expect(r.ok).toBe(false)
+    expect(forwardToSeenr).not.toHaveBeenCalled()
+  })
+
+  it('RECORDS the skip, so a mis-ticked library is visible on the Dashboard', async () => {
+    const { db, pipeline } = await configured()
+    db.upsertMapping('alice', 'tok', 1, 1, 1)
+    db.saveSettings({ libraries: JSON.stringify(['2']) })
+    getMetadata.mockImplementation(async () => ({ ...meta, section_id: '5', library_name: 'Filme' }))
+
+    await pipeline.processEvent(input)
+
+    const rows = db.listEvents(10)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.ok).toBe(0)
+    expect(rows[0]!.error).toContain('Filme')
+    expect(rows[0]!.error).toContain('not selected')
+  })
+
+  it('names the section when Tautulli gives no library_name', async () => {
+    const { db, pipeline } = await configured()
+    db.upsertMapping('alice', 'tok', 1, 1, 1)
+    db.saveSettings({ libraries: JSON.stringify(['2']) })
+    getMetadata.mockImplementation(async () => ({ ...meta, section_id: '9' }))
+
+    const r = await pipeline.processEvent(input)
+
+    expect(r.reason).toContain('section 9')
+  })
+
+  it('treats a numeric section_id as matching its string form', async () => {
+    const { db, pipeline } = await configured()
+    db.upsertMapping('alice', 'tok', 1, 1, 1)
+    db.saveSettings({ libraries: JSON.stringify(['5']) })
+    // Tautulli returns section_id as a number in some responses.
+    getMetadata.mockImplementation(async () => ({ ...meta, section_id: 5 }))
+
+    const r = await pipeline.processEvent(input)
+
+    expect(r.ok).toBe(true)
+  })
+
+  it('lets dryRun short-circuit ahead of the gate, so Preview still works', async () => {
+    const { db, pipeline } = await configured()
+    db.upsertMapping('alice', 'tok', 1, 1, 1)
+    db.saveSettings({ libraries: JSON.stringify(['2']) })
+    getMetadata.mockImplementation(async () => ({ ...meta, section_id: '5' }))
+
+    const r = await pipeline.processEvent(input, { dryRun: true, record: false })
+
+    // Preview is a diagnostic — it must not be blocked by a forwarding rule, and
+    // must not record anything either.
+    expect(r.ok).toBe(true)
+    expect(forwardToSeenr).not.toHaveBeenCalled()
+    expect(db.listEvents(10)).toHaveLength(0)
+  })
+})

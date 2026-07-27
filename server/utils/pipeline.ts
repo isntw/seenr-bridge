@@ -1,5 +1,6 @@
 import {
   getSettings, getMappingByUsername, getSharedRecipients, listSharedTitles, insertEvent,
+  parseLibraries,
   type MappingRow, type SettingsRow,
 } from './db'
 import { getMetadata, getWatchedEpisodeKeys } from './tautulli'
@@ -110,6 +111,19 @@ export async function processEvent(
   const common = { event: built.event, ids: built.ids, title: built.title, media_type: meta.media_type, image, payload: built.payload }
 
   if (opts.dryRun) return { ok: true, ...common }
+
+  // Library gate. An empty selection means every library, so an upgrade cannot
+  // silently stop forwarding for anyone who has not opened Settings.
+  //
+  // This one is RECORDED rather than returned silently, unlike the unmapped-user
+  // case above: that is Tautulli telling us about somebody the operator never
+  // configured, whereas this is a rule the operator did configure — so a
+  // mis-ticked library has to be visible on the Dashboard, or it is undiagnosable.
+  const allowed = parseLibraries(settings.libraries)
+  if (allowed.length && !allowed.includes(String(meta.section_id ?? ''))) {
+    const where = meta.library_name || `section ${meta.section_id ?? '?'}`
+    return fail(`Library "${where}" is not selected in Settings`, common)
+  }
 
   if (!settings.forward_enabled)
     return fail('Forwarding is disabled in settings', common)

@@ -112,6 +112,11 @@ CREATE TABLE IF NOT EXISTS shared_title_profiles (
   const settingsCols = cols('settings')
   if (!settingsCols.includes('bridge_url'))
     db.exec("ALTER TABLE settings ADD COLUMN bridge_url TEXT NOT NULL DEFAULT ''")
+  // Which Tautulli library sections to use, as a JSON array of section_ids.
+  // Defaults to '' — and empty deliberately means ALL, so an upgrade never
+  // silently stops forwarding for someone who has not visited Settings yet.
+  if (!settingsCols.includes('libraries'))
+    db.exec("ALTER TABLE settings ADD COLUMN libraries TEXT NOT NULL DEFAULT ''")
   if (!settingsCols.includes('sync_movies'))
     db.exec('ALTER TABLE settings ADD COLUMN sync_movies INTEGER NOT NULL DEFAULT 1')
   if (!settingsCols.includes('sync_episodes'))
@@ -138,6 +143,8 @@ export interface SettingsRow {
   bridge_url: string
   sync_movies: number
   sync_episodes: number
+  /** JSON array of Tautulli section_ids. Empty string means every library. */
+  libraries: string
 }
 
 export interface MappingRow {
@@ -180,6 +187,23 @@ export function settingsToWire(r: SettingsRow): Settings {
     forward_enabled: !!r.forward_enabled,
     sync_movies: !!r.sync_movies,
     sync_episodes: !!r.sync_episodes,
+    // The JSON <-> array conversion belongs here for the same reason the 0/1 <->
+    // boolean one does: `shared/types` is the wire shape, and the storage
+    // representation must not leak past this boundary. A malformed or legacy
+    // value degrades to [] — which means "all libraries", the safe default.
+    libraries: parseLibraries(r.libraries),
+  }
+}
+
+/** Tolerant parse: '' (the column default), null, malformed JSON and a non-array
+ *  payload all collapse to [], i.e. every library. */
+export function parseLibraries(raw: string | null | undefined): string[] {
+  if (!raw) return []
+  try {
+    const v = JSON.parse(raw)
+    return Array.isArray(v) ? v.map(String) : []
+  } catch {
+    return []
   }
 }
 
@@ -205,7 +229,7 @@ export function eventToWire(r: EventRowDb): ScrobbleEvent {
 export function getSettings(): SettingsRow {
   return useDb()
     .prepare(
-      'SELECT tautulli_url, tautulli_apikey, seenr_base_url, forward_enabled, bridge_url, sync_movies, sync_episodes FROM settings WHERE id = 1',
+      'SELECT tautulli_url, tautulli_apikey, seenr_base_url, forward_enabled, bridge_url, sync_movies, sync_episodes, libraries FROM settings WHERE id = 1',
     )
     .get() as SettingsRow
 }
@@ -220,10 +244,11 @@ export function saveSettings(s: Partial<SettingsRow>): SettingsRow {
     bridge_url: s.bridge_url ?? cur.bridge_url,
     sync_movies: s.sync_movies ?? cur.sync_movies,
     sync_episodes: s.sync_episodes ?? cur.sync_episodes,
+    libraries: s.libraries ?? cur.libraries,
   }
   useDb()
     .prepare(
-      'UPDATE settings SET tautulli_url=?, tautulli_apikey=?, seenr_base_url=?, forward_enabled=?, bridge_url=?, sync_movies=?, sync_episodes=? WHERE id=1',
+      'UPDATE settings SET tautulli_url=?, tautulli_apikey=?, seenr_base_url=?, forward_enabled=?, bridge_url=?, sync_movies=?, sync_episodes=?, libraries=? WHERE id=1',
     )
     .run(
       next.tautulli_url,
@@ -233,6 +258,7 @@ export function saveSettings(s: Partial<SettingsRow>): SettingsRow {
       next.bridge_url,
       next.sync_movies,
       next.sync_episodes,
+      next.libraries,
     )
   return next
 }

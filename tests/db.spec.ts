@@ -171,3 +171,59 @@ describe('wire conversion', () => {
     expect(wire.ok).toBe(false)
   })
 })
+
+describe('parseLibraries', () => {
+  // '' is the column default on every upgraded install, so this is the case that
+  // decides whether an upgrade keeps forwarding. Empty must mean ALL, never none.
+  it('treats empty, null and undefined as "all libraries"', async () => {
+    const db = await freshDb()
+    expect(db.parseLibraries('')).toEqual([])
+    expect(db.parseLibraries(null)).toEqual([])
+    expect(db.parseLibraries(undefined)).toEqual([])
+  })
+
+  it('parses a JSON array of ids', async () => {
+    const db = await freshDb()
+    expect(db.parseLibraries('["1","5"]')).toEqual(['1', '5'])
+  })
+
+  it('coerces numeric ids to strings, since Tautulli mixes both forms', async () => {
+    const db = await freshDb()
+    expect(db.parseLibraries('[1,5]')).toEqual(['1', '5'])
+  })
+
+  it('degrades malformed JSON to "all" rather than throwing', async () => {
+    const db = await freshDb()
+    expect(db.parseLibraries('{oops')).toEqual([])
+  })
+
+  it('degrades a non-array payload to "all"', async () => {
+    const db = await freshDb()
+    expect(db.parseLibraries('{"a":1}')).toEqual([])
+    expect(db.parseLibraries('"5"')).toEqual([])
+  })
+})
+
+describe('settings libraries round-trip', () => {
+  it('stores JSON and hands back a real array at the wire boundary', async () => {
+    const db = await freshDb()
+    db.saveSettings({ libraries: JSON.stringify(['1', '6']) })
+
+    // storage form
+    expect(db.getSettings().libraries).toBe('["1","6"]')
+    // wire form
+    expect(db.settingsToWire(db.getSettings()).libraries).toEqual(['1', '6'])
+  })
+
+  it('defaults to an empty selection on a fresh database', async () => {
+    const db = await freshDb()
+    expect(db.settingsToWire(db.getSettings()).libraries).toEqual([])
+  })
+
+  it('leaves the selection alone when a patch omits it', async () => {
+    const db = await freshDb()
+    db.saveSettings({ libraries: JSON.stringify(['3']) })
+    db.saveSettings({ tautulli_url: 'http://elsewhere:8181' })
+    expect(db.settingsToWire(db.getSettings()).libraries).toEqual(['3'])
+  })
+})

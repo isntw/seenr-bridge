@@ -15,7 +15,7 @@ onMounted(() => {
 onBeforeUnmount(() => status.stop())
 
 const TRIGGERS = [
-  { key: 'watched', label: 'Watched', recommended: true },
+  { key: 'watched', label: 'Watched' },
   { key: 'play', label: 'Play' },
   { key: 'stop', label: 'Stop' },
   { key: 'pause', label: 'Pause' },
@@ -27,9 +27,9 @@ function isTriggerSelected(key: string) {
   return selectedTriggers.value.includes(key)
 }
 
-// UCheckbox has no built-in array-group mode outside UCheckboxGroup, so a
-// shared v-model across sibling checkboxes would fight itself. Each checkbox
-// derives its own checked state from the array and toggles membership.
+// Chips are aria-pressed buttons rather than checkboxes, so each derives its own
+// pressed state from the array and toggles membership. A shared v-model across
+// siblings would fight itself.
 function toggleTrigger(key: string, checked: boolean) {
   if (checked) {
     if (!selectedTriggers.value.includes(key)) selectedTriggers.value.push(key)
@@ -77,6 +77,24 @@ function syncSummary(m: Mapping) {
   if (m.sync_movies) return 'Movies only'
   return 'nothing selected'
 }
+
+// Sub-section pills read the same polled status the header and sidebar use — no
+// extra request path is introduced.
+const connStatus = computed<'ok' | 'bad' | 'pending'>(() =>
+  status.tautulli === null ? 'pending' : status.tautulli.ok ? 'ok' : 'bad',
+)
+const connStatusText = computed(() =>
+  status.tautulli === null ? 'checking…' : status.tautulli.ok ? 'connected' : 'unreachable',
+)
+// status.webhook initialises to false, so without a pending state this pill
+// renders a red "not set up" on every fresh load until the first poll returns.
+// status.tautulli === null is an exact proxy for "no poll has completed yet".
+const hookStatus = computed<'ok' | 'bad' | 'pending'>(() =>
+  status.tautulli === null ? 'pending' : status.webhook ? 'ok' : 'bad',
+)
+const hookStatusText = computed(() =>
+  status.tautulli === null ? 'checking…' : status.webhook ? 'active' : 'not set up',
+)
 
 async function saveConnection() {
   saving.value = true
@@ -156,11 +174,38 @@ async function runSync() {
 
 async function saveAdvanced() {
   await store.save({
-    forward_enabled: store.settings!.forward_enabled,
     seenr_base_url: store.settings!.seenr_base_url,
     bridge_url: store.settings!.bridge_url,
   })
   toast.add({ title: 'Saved.', color: 'success' })
+}
+
+// The switch left Advanced, so it no longer has a Save button next to it and
+// must persist on change. On failure the optimistic value is rolled back, so the
+// switch never lies about what the server holds.
+//
+// `forwardingBusy` is not cosmetic. Without it two overlapping toggles can both
+// fail and land the display on the wrong value: from ON, clicking OFF then ON
+// fires two requests; the first rejection restores ON, the second restores OFF,
+// and the switch ends OFF while the server still holds ON. Rolling back to a
+// captured `prev` does not fix that on its own — the second call captures the
+// already-mutated value — so the guard is what makes the rollback sound.
+const forwardingBusy = ref(false)
+
+async function toggleForwarding(v: boolean) {
+  if (forwardingBusy.value) return
+  const prev = store.settings!.forward_enabled
+  forwardingBusy.value = true
+  store.settings!.forward_enabled = v
+  try {
+    await store.setForwarding(v)
+    toast.add({ title: v ? 'Forwarding enabled.' : 'Forwarding paused.', color: 'success' })
+  } catch (e) {
+    store.settings!.forward_enabled = prev
+    toast.add({ title: apiErrorMessage(e, 'Could not change forwarding.'), color: 'error' })
+  } finally {
+    forwardingBusy.value = false
+  }
 }
 
 // Preview and Send share this — the only difference is dryRun (build the
@@ -169,7 +214,7 @@ async function saveAdvanced() {
 // result is page-local scratch state, not shared app state like settings.
 async function runTest(dryRun: boolean) {
   if (!testRatingKey.value.trim() || !testUsername.value.trim()) {
-    toast.add({ title: 'rating_key and username are both required.', color: 'error' })
+    toast.add({ title: 'Pick an item and a user first.', color: 'error' })
     return
   }
   const busy = dryRun ? previewBusy : sendBusy
@@ -193,53 +238,167 @@ async function runTest(dryRun: boolean) {
 </script>
 
 <template>
-  <div v-if="store.settings" class="space-y-4">
-    <!-- "Setup" on the left, the live status line on the right — the old page
-         header. Both wrap rather than overflowing on narrow screens. -->
-    <div class="flex flex-wrap items-center justify-between gap-3">
+  <div v-if="store.settings" class="space-y-6">
+    <!-- "Setup" on the left; the master forwarding switch and the live status
+         line on the right. Everything wraps rather than overflowing. -->
+    <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
       <h2 class="text-lg font-semibold text-highlighted">Setup</h2>
-      <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
         <span class="flex items-center gap-1.5">
           <span
             class="size-1.5 rounded-full"
-            :class="status.tautulli === null ? 'bg-neutral-500' : status.tautulli.ok ? 'bg-success' : 'bg-error'"
+            :class="connStatus === 'pending' ? 'bg-neutral-500' : connStatus === 'ok' ? 'bg-success' : 'bg-error'"
           />
           <span class="text-muted">
-            {{ status.tautulli === null ? 'checking…' : status.tautulli.ok ? 'Tautulli connected' : 'Tautulli offline' }}
+            {{ connStatus === 'pending' ? 'checking…' : connStatus === 'ok' ? 'Tautulli connected' : 'Tautulli unreachable' }}
           </span>
         </span>
         <span class="text-dimmed">{{ status.users }} {{ status.users === 1 ? 'user' : 'users' }}</span>
         <span class="flex items-center gap-1.5">
-          <span class="size-1.5 rounded-full" :class="status.webhook ? 'bg-success' : 'bg-error'" />
-          <span class="text-muted">{{ status.webhook ? 'webhook active' : 'no webhook' }}</span>
+          <span
+            class="size-1.5 rounded-full"
+            :class="hookStatus === 'pending' ? 'bg-neutral-500' : hookStatus === 'ok' ? 'bg-success' : 'bg-error'"
+          />
+          <span class="text-muted">
+            {{ hookStatus === 'pending' ? 'checking…' : hookStatus === 'ok' ? 'webhook active' : 'no webhook' }}
+          </span>
         </span>
+        <!-- The master kill switch, promoted out of Advanced. Wrapping it in a
+             <label> makes the word "Forwarding" part of the hit area, and gives
+             the switch a programmatic accessible name. -->
+        <label class="flex items-center gap-2">
+          <USwitch
+            :model-value="store.settings.forward_enabled"
+            :disabled="forwardingBusy"
+            @update:model-value="(v) => toggleForwarding(v === true)"
+          />
+          <span class="font-medium text-default">Forwarding</span>
+        </label>
       </div>
     </div>
 
-    <SetupStep :n="1" title="Connect Tautulli" hint="where the bridge reads episode IDs">
-      <div class="grid gap-4 sm:grid-cols-2">
-        <UFormField label="Tautulli URL" help="e.g. http://tautulli:8181">
-          <UInput v-model="store.settings.tautulli_url" placeholder="http://tautulli:8181" class="w-full" />
-        </UFormField>
-        <UFormField label="API key" help="Tautulli → Settings → Web Interface → API key">
-          <UInput v-model="store.settings.tautulli_apikey" type="password" placeholder="xxxxxxxx" class="w-full" />
-        </UFormField>
-      </div>
-      <div class="mt-4 flex flex-wrap gap-3">
-        <UButton color="neutral" variant="subtle" label="Test connection" class="min-h-11" @click="testConnection" />
-        <UButton :loading="saving" label="Save" class="min-h-11" @click="saveConnection" />
-      </div>
+    <SetupStep :n="1" title="Tautulli" hint="the source — where playback happens and episode IDs come from">
+      <SetupSubsection label="Connection" :status="connStatus" :status-text="connStatusText">
+        <div class="grid gap-4 sm:grid-cols-2 sm:items-end">
+          <UFormField label="Tautulli URL">
+            <UInput v-model="store.settings.tautulli_url" placeholder="http://tautulli:8181" class="w-full" />
+          </UFormField>
+          <UFormField label="API key">
+            <UInput v-model="store.settings.tautulli_apikey" type="password" placeholder="xxxxxxxx" class="w-full" />
+          </UFormField>
+        </div>
+        <!-- Group-level, not per-field: a `help` on one UFormField and not its
+             sibling makes that grid cell taller and the row ragged. Keeping the
+             hints here is what lets the grid align on items-end. -->
+        <p class="text-xs text-dimmed">
+          URL e.g. <code class="text-default">http://tautulli:8181</code> · key from Tautulli →
+          Settings → Web Interface → API key
+        </p>
+        <!-- No border-t here. Right-alignment plus whitespace already separates
+             the actions from the fields, and the seam starting the next
+             sub-section is the only rule in this card that carries meaning —
+             four stacked rules read as noise. -->
+        <div class="flex flex-col gap-3 pt-1 sm:flex-row sm:justify-end">
+          <!-- Below sm the row stacks with the primary on top (order-1), so the
+               action you almost always want is the first control you meet as the
+               row scrolls into view; the secondary drops beneath it. -->
+          <UButton
+            color="neutral"
+            variant="subtle"
+            label="Test connection"
+            class="justify-center order-2 sm:order-1"
+            @click="testConnection"
+          />
+          <UButton
+            :loading="saving"
+            label="Save"
+            class="justify-center order-1 sm:order-2"
+            @click="saveConnection"
+          />
+        </div>
+      </SetupSubsection>
+
+      <SetupSubsection label="Event webhook" :status="hookStatus" :status-text="hookStatusText" seam>
+        <p class="text-xs text-dimmed">
+          One webhook in Tautulli covers every user. <strong class="text-default">Watched</strong> is
+          the recommended trigger.
+        </p>
+        <div class="flex flex-wrap gap-2" role="group" aria-label="Triggers to enable">
+          <!-- Chips, not checkboxes: the `recommended` badge used to be passed as
+               #description to the Watched checkbox, which made that one row
+               taller than its four siblings. The badge now folds into the
+               selected state and the recommendation moved to the line above.
+
+               `px-2.5 py-1.5 text-sm gap-1.5` is verbatim Nuxt UI's `md` button
+               size (see .nuxt/ui/button.ts) — this is a raw <button> with no
+               component defaults of its own, and it sits beside real UButtons. -->
+          <button
+            v-for="t in TRIGGERS"
+            :key="t.key"
+            type="button"
+            :aria-pressed="isTriggerSelected(t.key)"
+            class="inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm ring-1 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-400"
+            :class="isTriggerSelected(t.key)
+              ? 'bg-primary-600/20 text-primary-200 ring-primary-400/40'
+              : 'bg-default text-muted ring-default hover:text-default'"
+            @click="toggleTrigger(t.key, !isTriggerSelected(t.key))"
+          >
+            <span v-if="isTriggerSelected(t.key)" aria-hidden="true">✓</span>
+            <span>{{ t.label }}</span>
+          </button>
+        </div>
+        <div class="flex pt-1 sm:justify-end">
+          <UButton
+            :loading="syncing"
+            label="Sync to Tautulli"
+            class="w-full justify-center sm:w-auto"
+            @click="runSync"
+          />
+        </div>
+
+        <!-- Chrome-less on purpose. This is an alternative to the Sync button
+             directly above it, not a third page-level section, so it gets no
+             card background, ring or radius — unlike Advanced and Test, which
+             use DisclosureCard. -->
+        <UCollapsible v-model:open="manual">
+          <UButton color="neutral" variant="ghost" class="w-full justify-start gap-2.5 px-0">
+            <UIcon
+              name="i-lucide-chevron-right"
+              class="size-4 shrink-0 text-muted transition-transform"
+              :class="manual ? 'rotate-90' : ''"
+            />
+            <span class="text-sm font-medium text-highlighted">Set it up manually instead</span>
+          </UButton>
+          <template #content>
+            <div class="space-y-4 pt-2">
+              <CopyField label="Webhook URL" :value="webhookUrl" />
+              <CopyField label="Method" value="POST" />
+              <CopyField label="Headers" :value="'{&quot;Content-Type&quot;: &quot;application/json&quot;}'" />
+              <CopyField
+                label="JSON body"
+                :value="'{&quot;action&quot;: &quot;{action}&quot;, &quot;rating_key&quot;: &quot;{rating_key}&quot;, &quot;username&quot;: &quot;{username}&quot;}'"
+                hint="Paste into a Tautulli Webhook agent for each trigger you enable."
+              />
+            </div>
+          </template>
+        </UCollapsible>
+      </SetupSubsection>
     </SetupStep>
 
-    <SetupStep :n="2" title="Map users to seenr" hint="each Plex user → their seenr token">
-      <div class="space-y-2">
-        <p v-if="!store.mappings.length" class="text-sm text-muted">No users yet. Add one below.</p>
+    <SetupStep :n="2" title="seenr users" hint="each Plex user → their seenr token">
+      <p v-if="!store.mappings.length" class="text-sm text-muted">No users yet. Add one below.</p>
 
-        <!-- Stacks below sm so the Configure button never squeezes the token. -->
+      <!-- Discrete cards rather than a divide-y list. A full-bleed ruled list
+           borrowed from the Dashboard read as one undifferentiated block here,
+           because unlike an event feed each row is a thing you act on. Giving
+           each its own surface and ring separates them without adding rules —
+           this card sits on bg-elevated/40, a step up from the page-coloured
+           inputs below it, so the two groups don't blend. -->
+      <div v-else class="space-y-2">
         <div
           v-for="m in store.mappings"
           :key="m.id"
-          class="flex flex-col gap-2 rounded-lg bg-default px-3 py-2.5 ring-1 ring-default sm:flex-row sm:items-center sm:gap-3"
+          class="flex flex-col gap-2.5 rounded-lg bg-elevated/40 px-3.5 py-3 ring-1 ring-default sm:flex-row sm:items-center sm:gap-3"
         >
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-2 text-sm font-medium text-highlighted">
@@ -256,23 +415,22 @@ async function runTest(dryRun: boolean) {
             color="neutral"
             variant="subtle"
             label="Configure"
-            class="min-h-11 self-start sm:self-auto"
+            class="self-start sm:self-auto"
             @click="edit = { ...m }"
           />
         </div>
       </div>
 
-      <!-- items-start (not items-end): the token field's help text below its
-           input makes that cell taller than the plain username field, so
-           bottom-aligning would misalign the inputs. Top-aligning keeps the
-           inputs level since both labels are the same height. -->
-      <div class="mt-4 grid gap-3 sm:grid-cols-[1fr_2fr_auto] sm:items-start">
+      <!-- items-end, and no help text inside the grid. Both fields are now the
+           same height, so the bare Add button lines up with the inputs on its
+           own. The invisible non-breaking-space spacer div that used to shim it
+           is gone, and nothing replaced it. -->
+      <div class="mt-4 grid gap-3 sm:grid-cols-[1fr_2fr_auto] sm:items-end">
         <UFormField label="Plex username">
-          <!-- Free text still allowed, so manual entry works when Tautulli
-               is unreachable. Selecting the generated "Create …" option calls
-               preventDefault() internally (see SelectMenu.vue) and only emits
-               `create` — it does not update v-model on its own — so the typed
-               value is applied here explicitly. -->
+          <!-- Free text stays allowed so manual entry works when Tautulli is
+               unreachable. The generated "Create …" option calls preventDefault()
+               internally and only emits `create` — it does not update v-model —
+               so the typed value is applied here explicitly. -->
           <USelectMenu
             v-model="newUser"
             :items="availableUsers"
@@ -282,225 +440,130 @@ async function runTest(dryRun: boolean) {
             @create="(item) => { newUser = item }"
           />
         </UFormField>
-        <UFormField label="seenr token" help="the part after /scrobble/plex/ in your seenr URL">
+        <UFormField label="seenr token">
           <UInput v-model="newToken" placeholder="9%7CyourSeenrToken" class="w-full" />
         </UFormField>
-        <div>
-          <!-- The Add button has no label of its own, so with the row now
-               top-aligned it would sit level with the labels above, not the
-               inputs. This invisible spacer reproduces a label's height plus
-               the label-to-input gap (mirroring UFormField's own
-               labelWrapper + `mt-1` container spacing) purely to push the
-               button down to input level. See git show 2e675ca for the
-               pre-conversion React version, which used the same trick. -->
-          <div class="text-sm font-medium select-none" aria-hidden="true">&nbsp;</div>
-          <UButton label="Add" class="mt-1 min-h-11 w-full sm:w-auto" @click="addMapping" />
-        </div>
+        <UButton label="Add" icon="i-lucide-plus" class="w-full justify-center sm:w-auto" @click="addMapping" />
       </div>
+      <p class="mt-2 text-xs text-dimmed">
+        Token is the part after <code class="text-default">/scrobble/plex/</code> in your seenr URL.
+        Playback by anyone not mapped here is ignored — nothing is forwarded and no event is
+        recorded, so it won't show on the Dashboard either.
+      </p>
     </SetupStep>
 
-    <SetupStep :n="3" title="Send Tautulli's events here" hint="one webhook, covers every user">
-      <div class="mb-4">
-        <div class="mb-2.5 text-sm font-medium">Triggers to enable</div>
-        <div class="flex flex-wrap gap-x-5 gap-y-3">
-          <UCheckbox
-            v-for="t in TRIGGERS"
-            :key="t.key"
-            :model-value="isTriggerSelected(t.key)"
-            :label="t.label"
-            class="min-h-11 items-center"
-            @update:model-value="(v) => toggleTrigger(t.key, v === true)"
-          >
-            <template v-if="t.recommended" #description>
-              <UBadge color="success" variant="subtle" size="sm" label="recommended" />
-            </template>
-          </UCheckbox>
-        </div>
+    <div class="flex items-center gap-3 pt-2">
+      <hr class="flex-1 border-muted" />
+      <span class="text-xs uppercase tracking-wider text-dimmed">More</span>
+      <hr class="flex-1 border-muted" />
+    </div>
+
+    <DisclosureCard v-model:open="advanced" title="Advanced" summary="seenr URL · bridge URL">
+      <UFormField label="seenr base URL" help="each user's token is appended to this">
+        <UInput v-model="store.settings.seenr_base_url" class="w-full" />
+      </UFormField>
+      <UFormField label="Bridge public URL" help="blank = auto-detect; set only behind a reverse proxy">
+        <UInput v-model="store.settings.bridge_url" placeholder="https://bridge.example.com" class="w-full" />
+      </UFormField>
+      <UButton label="Save" @click="saveAdvanced" />
+    </DisclosureCard>
+
+    <DisclosureCard v-model:open="testPanel" title="Test a scrobble" summary="send a rating_key through the pipeline">
+      <p class="text-xs text-muted">
+        Sends one item down the same path a Tautulli webhook takes — good for checking ID matching
+        without waiting for playback.
+      </p>
+
+      <ItemPicker v-model="testRatingKey" />
+
+      <div class="grid gap-3 sm:grid-cols-2 sm:items-end">
+        <UFormField label="User">
+          <USelectMenu
+            v-model="testUsername"
+            :items="mappedUsernames"
+            create-item
+            placeholder="Select or type…"
+            class="w-full"
+            @create="(item) => { testUsername = item }"
+          />
+        </UFormField>
+        <UFormField label="Action">
+          <USelectMenu v-model="testAction" :items="TEST_ACTIONS" class="w-full" />
+        </UFormField>
+      </div>
+      <!-- Out of the grid on purpose: as a `help` on the User field this line
+           made that cell taller than its siblings and the row ragged. -->
+      <p class="text-xs text-dimmed">The user must have a seenr token mapped in step 2.</p>
+
+      <div class="flex flex-col gap-3 border-t border-default pt-4 sm:flex-row sm:items-center">
+        <!-- Preview is the solid primary: it is the safe, common action, and was
+             previously styled as the afterthought. Send drops from solid rose to
+             `subtle` — still unmistakably the destructive half, no longer the
+             loudest pixel on the page. -->
+        <UButton
+          icon="i-lucide-eye"
+          label="Preview"
+          class="justify-center"
+          :loading="previewBusy"
+          :disabled="sendBusy"
+          @click="runTest(true)"
+        />
+        <UButton
+          color="error"
+          variant="subtle"
+          icon="i-lucide-send"
+          label="Send for real"
+          class="justify-center"
+          :loading="sendBusy"
+          :disabled="previewBusy"
+          @click="runTest(false)"
+        />
+        <p class="text-xs text-dimmed sm:ml-auto sm:text-right">
+          Preview builds the payload only.<br class="hidden sm:block" />
+          Send forwards to <strong class="text-default">{{ testUsername || 'the selected user' }}</strong>
+          and records an event.
+        </p>
       </div>
 
-      <UButton :loading="syncing" label="Sync to Tautulli" class="min-h-11" @click="runSync" />
-
-      <!-- Old design: a collapsible is a card whose header *is* the toggle, with
-           a chevron that rotates open — not a bare text button on the page. -->
-      <UCard :ui="{ body: 'p-0 sm:p-0' }" class="mt-4">
-        <UCollapsible v-model:open="manual">
-          <UButton color="neutral" variant="ghost" class="w-full min-h-11 gap-2.5 px-5 py-3.5">
-            <UIcon
-              name="i-lucide-chevron-right"
-              class="size-4 shrink-0 text-muted transition-transform"
-              :class="manual ? 'rotate-90' : ''"
-            />
-            <span class="text-sm font-semibold text-highlighted">Set it up manually instead</span>
-          </UButton>
-          <template #content>
-            <div class="space-y-4 border-t border-default p-5">
-              <CopyField label="Webhook URL" :value="webhookUrl" />
-              <CopyField label="Method" value="POST" />
-              <CopyField label="Headers" :value="'{&quot;Content-Type&quot;: &quot;application/json&quot;}'" />
-              <CopyField
-                label="JSON body"
-                :value="'{&quot;action&quot;: &quot;{action}&quot;, &quot;rating_key&quot;: &quot;{rating_key}&quot;, &quot;username&quot;: &quot;{username}&quot;}'"
-                hint="Paste into a Tautulli Webhook agent for each trigger you enable."
-              />
-            </div>
-          </template>
-        </UCollapsible>
-      </UCard>
-    </SetupStep>
-
-    <UCard :ui="{ body: 'p-0 sm:p-0' }">
-      <UCollapsible v-model:open="advanced">
-        <UButton color="neutral" variant="ghost" class="w-full min-h-11 gap-2.5 px-5 py-3.5">
-          <UIcon
-            name="i-lucide-chevron-right"
-            class="size-4 shrink-0 text-muted transition-transform"
-            :class="advanced ? 'rotate-90' : ''"
+      <div v-if="testResult" class="space-y-3 border-t border-default pt-4">
+        <div class="flex flex-wrap items-center gap-2">
+          <UBadge
+            :color="testResult.ok ? 'success' : testResult.skipped ? 'warning' : 'error'"
+            variant="subtle"
+            :label="testResult.ok ? 'ok' : testResult.skipped ? 'skipped' : 'failed'"
           />
-          <span class="text-sm font-semibold text-highlighted">Advanced</span>
-          <span class="ml-auto hidden text-xs text-dimmed sm:block">
-            forwarding · seenr URL · bridge URL
-          </span>
-        </UButton>
-        <template #content>
-          <div class="space-y-4 border-t border-default p-5">
-            <div class="flex items-center justify-between gap-3">
-              <div class="min-w-0">
-                <div class="text-sm font-medium">Forward to seenr</div>
-                <p class="text-xs text-muted">Master switch for all forwarding.</p>
-              </div>
-              <USwitch v-model="store.settings.forward_enabled" />
-            </div>
-            <UFormField label="seenr base URL" help="each user's token is appended to this">
-              <UInput v-model="store.settings.seenr_base_url" class="w-full" />
-            </UFormField>
-            <UFormField
-              label="Bridge public URL"
-              help="blank = auto-detect; set only behind a reverse proxy"
-            >
-              <UInput v-model="store.settings.bridge_url" placeholder="https://bridge.example.com" class="w-full" />
-            </UFormField>
-            <UButton label="Save" class="min-h-11" @click="saveAdvanced" />
-          </div>
-        </template>
-      </UCollapsible>
-    </UCard>
-
-    <UCard :ui="{ body: 'p-0 sm:p-0' }">
-      <UCollapsible v-model:open="testPanel">
-        <UButton color="neutral" variant="ghost" class="w-full min-h-11 gap-2.5 px-5 py-3.5">
-          <UIcon
-            name="i-lucide-chevron-right"
-            class="size-4 shrink-0 text-muted transition-transform"
-            :class="testPanel ? 'rotate-90' : ''"
+          <UBadge
+            v-if="testResult.media_type"
+            color="neutral"
+            variant="subtle"
+            :label="testResult.media_type"
           />
-          <span class="text-sm font-semibold text-highlighted">Test a scrobble</span>
-          <span class="ml-auto hidden text-xs text-dimmed sm:block">
-            send a rating_key through the pipeline
-          </span>
-        </UButton>
-        <template #content>
-          <div class="space-y-4 border-t border-default p-5">
-            <p class="text-xs text-muted">
-              Runs a <code class="text-default">rating_key</code> through the same pipeline as a
-              real Tautulli webhook — useful for checking id matching without waiting for playback.
-            </p>
+          <UBadge
+            v-if="testResult.seenr_status"
+            color="neutral"
+            variant="subtle"
+            :label="`seenr ${testResult.seenr_status}`"
+          />
+        </div>
 
-            <!-- items-start (not items-end): the username field's help text
-                 below its input makes that cell taller than its siblings, so
-                 bottom-aligning would misalign the inputs. -->
-            <div class="grid gap-3 sm:grid-cols-3 sm:items-start">
-              <UFormField label="rating_key">
-                <UInput v-model="testRatingKey" placeholder="25419" class="w-full" />
-              </UFormField>
-              <UFormField label="username" help="must have a seenr token mapped above">
-                <USelectMenu
-                  v-model="testUsername"
-                  :items="mappedUsernames"
-                  create-item
-                  placeholder="Select or type…"
-                  class="w-full"
-                  @create="(item) => { testUsername = item }"
-                />
-              </UFormField>
-              <UFormField label="action">
-                <USelectMenu v-model="testAction" :items="TEST_ACTIONS" class="w-full" />
-              </UFormField>
-            </div>
+        <div v-if="testResult.title" class="text-sm font-medium">{{ testResult.title }}</div>
+        <div v-if="testResult.ids?.length" class="text-xs text-dimmed">
+          ids: {{ testResult.ids.join(', ') }}
+        </div>
 
-            <div class="space-y-2">
-              <p class="text-xs text-muted">
-                <strong class="text-default">Preview</strong> only builds the payload — nothing is
-                sent and nothing is recorded.
-                <strong class="text-default">Send to seenr for real</strong> actually forwards it
-                to this user's seenr account and writes an event row.
-              </p>
-              <div class="flex flex-wrap gap-3">
-                <UButton
-                  color="neutral"
-                  variant="outline"
-                  icon="i-lucide-eye"
-                  label="Preview"
-                  class="min-h-11"
-                  :loading="previewBusy"
-                  :disabled="sendBusy"
-                  @click="runTest(true)"
-                />
-                <!-- error (rose), not warning (amber): this is the destructive
-                     half of the pair, and amber is not in this palette. -->
-                <UButton
-                  color="error"
-                  icon="i-lucide-send"
-                  label="Send to seenr for real"
-                  class="min-h-11"
-                  :loading="sendBusy"
-                  :disabled="previewBusy"
-                  @click="runTest(false)"
-                />
-              </div>
-            </div>
+        <UAlert
+          v-if="testResult.reason"
+          :color="testResult.ok ? 'neutral' : testResult.skipped ? 'warning' : 'error'"
+          variant="subtle"
+          :description="testResult.reason"
+        />
 
-            <div v-if="testResult" class="space-y-3 border-t border-default pt-4">
-              <div class="flex flex-wrap items-center gap-2">
-                <UBadge
-                  :color="testResult.ok ? 'success' : testResult.skipped ? 'warning' : 'error'"
-                  variant="subtle"
-                  :label="testResult.ok ? 'ok' : testResult.skipped ? 'skipped' : 'failed'"
-                />
-                <UBadge
-                  v-if="testResult.media_type"
-                  color="neutral"
-                  variant="subtle"
-                  :label="testResult.media_type"
-                />
-                <UBadge
-                  v-if="testResult.seenr_status"
-                  color="neutral"
-                  variant="subtle"
-                  :label="`seenr ${testResult.seenr_status}`"
-                />
-              </div>
-
-              <div v-if="testResult.title" class="text-sm font-medium">{{ testResult.title }}</div>
-              <div v-if="testResult.ids?.length" class="text-xs text-dimmed">
-                ids: {{ testResult.ids.join(', ') }}
-              </div>
-
-              <UAlert
-                v-if="testResult.reason"
-                :color="testResult.ok ? 'neutral' : testResult.skipped ? 'warning' : 'error'"
-                variant="subtle"
-                :description="testResult.reason"
-              />
-
-              <pre
-                v-if="testResult.payload"
-                class="max-h-64 overflow-auto rounded-lg bg-default p-3 text-xs ring-1 ring-default"
-              >{{ testResultPayload }}</pre>
-            </div>
-          </div>
-        </template>
-      </UCollapsible>
-    </UCard>
+        <pre
+          v-if="testResult.payload"
+          class="max-h-64 overflow-auto rounded-lg bg-default p-3 text-xs ring-1 ring-default"
+        >{{ testResultPayload }}</pre>
+      </div>
+    </DisclosureCard>
 
     <UModal
       :open="!!edit"
@@ -528,10 +591,10 @@ async function runTest(dryRun: boolean) {
       </template>
       <template #footer>
         <div class="flex w-full flex-wrap justify-between gap-3">
-          <UButton color="error" variant="ghost" label="Remove" class="min-h-11" @click="removeEdit" />
+          <UButton color="error" variant="ghost" label="Remove" @click="removeEdit" />
           <div class="flex gap-3">
-            <UButton color="neutral" variant="subtle" label="Cancel" class="min-h-11" @click="edit = null" />
-            <UButton label="Save" class="min-h-11" @click="saveEdit" />
+            <UButton color="neutral" variant="subtle" label="Cancel" @click="edit = null" />
+            <UButton label="Save" @click="saveEdit" />
           </div>
         </div>
       </template>

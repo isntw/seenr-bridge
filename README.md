@@ -4,31 +4,50 @@ A small self-hosted service that makes **Tautulli → [seenr](https://seenr.app)
 
 ![version](https://img.shields.io/badge/version-2.0.0-8b5cf6)
 
-![Seenr Bridge dashboard](docs/dashboard.png)
+![The dashboard — recent scrobbles, with co-watched titles collapsed into one row per watch](docs/dashboard.png)
+
+*Dashboard — one row per watch. A co-watched title shows every profile it reached.*
+
+![The Shared page — titles marked as co-watched and who they are shared with](docs/shared.png)
+
+*Shared — titles you watch together, and who each one checks in for.*
 
 ## Why it exists
 
-seenr identifies an episode by its **own** TMDb/TVDb/IMDB id. But Tautulli's webhook template can only emit the **show's** id for an episode ([Tautulli #2510](https://github.com/Tautulli/Tautulli/issues/2510) — an open, unresolved feature request). So a raw Tautulli webhook sends the *series* id, seenr resolves it as an *episode* id, and you get checked in on the **wrong show**.
+seenr identifies an episode by its **own** TMDb/TVDb/IMDB id. But Tautulli's webhook template can only emit the **show's** id for an episode ([Tautulli #2510](https://github.com/Tautulli/Tautulli/issues/2510) — open and unresolved). So a raw Tautulli webhook sends the *series* id, seenr resolves it as an *episode* id, and you get checked in on the **wrong show**.
 
-Plex's own webhooks send the right episode ids — but they only fire for the **server owner**, not shared users. Tautulli sees everyone's playback, so the bridge keeps Tautulli as the source and fixes the missing piece:
+Plex's own webhooks carry the right episode ids, but only fire for the **server owner** — not shared users. Tautulli sees everyone's playback, so the bridge keeps Tautulli as the source and supplies the missing piece: it re-looks-up each item's real ids by `rating_key`, rebuilds a proper Plex `media.scrobble` payload, and forwards it to the right user's seenr token. Matching is ID-based and title-independent, for episodes and movies alike.
 
-> It receives each Tautulli event, looks the item's **real ids** up by `rating_key` via the Tautulli API, builds a proper Plex `media.scrobble` payload, and forwards it to the right user's seenr token — ID-based and title-independent, for all users.
+```mermaid
+flowchart LR
+    Plex["🎬 Plex<br/>someone presses play"]
+    Tautulli["📊 Tautulli<br/>sees every user's playback"]
+    Bridge["🌉 Seenr Bridge"]
+    Seenr["✅ seenr.app<br/>that user's account"]
 
+    Plex --> Tautulli
+    Tautulli -- "webhook<br/>rating_key · username · action" --> Bridge
+    Bridge -. "1 · get_metadata(rating_key)" .-> Tautulli
+    Tautulli -. "2 · the item's OWN tmdb/tvdb/imdb ids" .-> Bridge
+    Bridge == "3 · POST media.scrobble<br/>to that user's token" ==> Seenr
+
+    style Bridge stroke:#8b5cf6,stroke-width:2px
+    style Seenr stroke:#34d399,stroke-width:2px
 ```
-Plex ──play──▶ Tautulli ──webhook {rating_key, user, action}──▶ Seenr Bridge
-                                                                    │  get_metadata(rating_key) → real ids
-                                                                    ▼
-                                              POST payload=<plex media.scrobble> ──▶ seenr.app/.../<user token>
-```
+
+The dotted pair is the part that matters: the bridge asks Tautulli about the item
+it was just told about, because the webhook alone can't say which *episode* was
+watched — only which show.
 
 ## Features
 
-- **Correct episode + movie check-ins** by real external id (fixes the wrong-show bug).
-- **One webhook covers every user** — the bridge routes to the right seenr account by username.
-- **Per-user settings** — each user has their own seenr token, an on/off switch, and a choice of what to sync (TV episodes / movies).
-- **One-click Tautulli setup** — a "Sync to Tautulli" button creates/updates the webhook via Tautulli's API (or copy-paste it manually).
-- **Live dashboard** — recent scrobbles with poster art, the matched id, per-event status, and library stats (total / episodes / movies / users).
-- **Login-protected** — first run creates your account; after that it's login-only.
+- **Correct episode + movie check-ins** by real external id — fixes the wrong-show bug.
+- **One webhook covers every user.** The bridge routes to the right seenr account by username.
+- **Per-user config** — each user has their own token, an on/off switch, and a choice of TV / movies.
+- **Co-watching** — mark a title as shared and a watch by any assigned profile checks in for all of them, optionally backfilling what they've already seen.
+- **One-click Tautulli setup** — creates or updates the webhook through Tautulli's own API, or copy-paste it by hand.
+- **Live dashboard** — recent scrobbles with poster art, the matched id, the event type, and per-user delivery status.
+- **Login-protected.** First run creates your account; registration then closes.
 
 ## Requirements
 
@@ -68,99 +87,72 @@ cd seenr-bridge
 docker compose -f docker-compose.build.yml up -d --build
 ```
 
-Then open **http://<host>:8687**.
+Then open **http://\<host\>:8687** and create your account.
 
-> The bridge must be reachable from your Tautulli container/host, since Tautulli posts webhooks to it.
+> The bridge must be reachable from your Tautulli container/host — Tautulli posts webhooks to it.
 
-**Updating:** `docker compose pull && docker compose up -d`.
+**Updating:** `docker compose pull && docker compose up -d`
 
-## First run
+## Setup
 
-1. On first visit you'll be asked to **create an account** (username + password, 8+ chars). After that the app is login-only — registration closes.
-2. You land on the **Dashboard**. Go to **Settings** to wire things up.
+Everything lives on the **Settings** page, in two steps.
 
-## Setup (Settings page)
+**1 · Tautulli** — two jobs, in order, because the second needs the first:
 
-A guided, three-step flow:
+- **Connection** — your Tautulli URL (e.g. `http://tautulli:8181`) and API key (Tautulli → Settings → Web Interface → API key). **Test connection**, then **Save**.
+- **Event webhook** — pick which triggers to enable (**Watched** is the one that matters; Play/Stop/Pause/Resume are optional "now playing" events) and hit **Sync to Tautulli**. That creates a single `Seenr Bridge` webhook notifier pointed back here, with no per-user conditions. Prefer to do it yourself? Expand **Set it up manually instead** for the exact URL, headers and JSON body.
 
-**1. Connect Tautulli** — enter your Tautulli URL (e.g. `http://tautulli:8181`) and API key (Tautulli → Settings → Web Interface → API key). Click **Test connection**, then **Save**.
+**2 · seenr users** — one entry per user: pick their Plex **username** (auto-populated from Tautulli once connected, or type it) and paste their seenr **token** — the part after `/scrobble/plex/` in that user's seenr webhook URL. **Configure** on a user sets what they sync or pauses them.
 
-**2. Map users to seenr** — add one row per user: pick their Plex **username** from the dropdown (auto-populated from Tautulli once connected — or type it manually) and paste their seenr **token** (the part after `/scrobble/plex/` in that user's seenr webhook URL). Click a user's **Configure** to set what they sync (TV episodes / movies) or pause them.
+**Forwarding** is a master switch in the page header, next to the live status line. It saves the moment you flip it.
 
-**3. Send Tautulli's events here** — pick which **triggers** to enable (**Watched** is the important one; Play/Stop/Pause/Resume are optional "now playing" events) and click **Sync to Tautulli**. That creates a single `Seenr Bridge` webhook notifier in Tautulli, pointed back at the bridge, with no per-user conditions.
+That's it — play something past the watched threshold and it appears on the Dashboard and in seenr.
 
-> Prefer to do it by hand? Expand **"Set it up manually instead"** for the exact URL, headers, and JSON body to paste into a Tautulli Webhook agent.
+## Co-watching (Shared)
 
-That's it — play something past the watched threshold and it shows up on the Dashboard and in seenr.
+The **Shared** page is for titles more than one person watches together. Add a title, tick who watches it, and a watch by any assigned profile checks in for all of them.
 
-## Advanced settings
+- **Add title** opens a picker — search your TV or movie library, tick the profiles, and choose what to do about watches that already happened: sync them all retroactively, or start from now.
+- Clicking a row opens the same modal to change who it's shared with, re-run a retroactive sync, or remove it.
+
+Retroactive syncing replays what each profile has already finished, so it can post a lot of scrobbles at once — the modal defaults to leaving existing watches alone when you're editing.
+
+## Advanced
 
 Under **Settings → Advanced**:
 
-- **Forward to seenr** — master on/off switch for all forwarding.
 - **seenr base URL** — the endpoint each user's token is appended to (default `https://seenr.app/api/v1/scrobble/plex`, correct for seenr.app).
-- **Bridge public URL** — the URL Tautulli uses to reach the bridge. Blank = auto-detected from your browser address; set it only if the bridge sits behind a reverse proxy/domain.
+- **Bridge public URL** — how Tautulli reaches the bridge. Blank auto-detects from your browser's address; set it only behind a reverse proxy or custom domain.
 
-Account settings (change password, log out) live in the **account menu**, top-right.
+**Test a scrobble** (also under Settings) runs one item through the real pipeline on demand. Pick it by drilling TV → season → episode, choosing a movie, or pasting a `rating_key` directly. **Preview** builds the payload without contacting seenr; **Send for real** forwards it and records an event.
 
-Below Advanced, **"Test a scrobble"** runs a `rating_key` through the pipeline on demand — **Preview** builds the payload without contacting seenr, **Send to seenr for real** forwards it to that user's seenr account and writes an event row, same as a real webhook would.
-
-## How matching works
-
-- **Episodes** → the payload carries the **episode's own** `tmdb`/`tvdb`/`imdb` ids (looked up via the Tautulli API) plus show title and season/episode. seenr matches by id.
-- **Movies** → the movie's own ids.
+Change password and log out live in the account menu, top-right.
 
 ## Security
 
-- The whole UI and API require login, **except** `/api/webhook/tautulli` (Tautulli can't authenticate), `/api/health` + `/api/version`, and the auth flow itself — `/api/auth/status`, `/api/auth/login`, `/api/auth/register`, `/api/auth/logout` (a session is required for everything else, including `/api/auth/change-password`).
-- Passwords are hashed with scrypt. Sessions are httpOnly cookies.
-- Because the webhook endpoint is unauthenticated, keep the bridge on a trusted network. If you expose it publicly, put it behind a reverse proxy with its own protection.
+- The UI and API require login, **except** `/api/webhook/tautulli` (Tautulli can't authenticate), `/api/health`, `/api/version`, and the auth flow — `/api/auth/status`, `/login`, `/register`, `/logout`. Everything else needs a session, including `/api/auth/change-password`.
+- Passwords are hashed with scrypt; sessions are httpOnly cookies.
+- Because the webhook endpoint is unauthenticated, keep the bridge on a trusted network. If you expose it publicly, put a reverse proxy with its own protection in front.
+
+The full route list, and the webhook's exact request shape, are in [`docs/api.md`](docs/api.md).
 
 ## Data & backup
 
-All state (settings, users, mappings, event history) lives in **`./data/seenr-bridge.db`** (SQLite), mounted into the container. Back up that file to preserve everything. Event history is capped at the most recent **1,000** entries.
-
-## API reference
-
-| Method | Path | Auth | Purpose |
-|---|---|:---:|---|
-| POST | `/api/webhook/tautulli` | public | Tautulli posts playback events here |
-| GET | `/api/health`, `/api/version` | public | health + version |
-| POST | `/api/auth/register`, `/login`, `/logout`, `/change-password` | mixed | authentication — `/change-password` requires a session |
-| GET/PUT | `/api/settings` | ✓ | connection + advanced config |
-| GET | `/api/status` | ✓ | readiness (Tautulli, webhook, users) |
-| GET/POST/DELETE | `/api/mappings` | ✓ | per-user token + sync config |
-| GET | `/api/tautulli/users` | ✓ | Plex usernames for the mapping dropdown |
-| POST | `/api/tautulli/sync-webhook` | ✓ | create/update the Tautulli webhook |
-| GET | `/api/events` | ✓ | recent scrobbles (`?limit=`) |
-| GET | `/api/stats` | ✓ | dashboard counts |
-| POST | `/api/test` | ✓ | build (`dryRun`) or send a test scrobble |
+All state — settings, your account, user mappings, shared titles, event history — is the single SQLite file at **`./data/seenr-bridge.db`**, mounted into the container. Back that up and you've backed up everything. Event history is capped at the most recent **1,000** rows.
 
 ## Development
-
-One install, one process, one port — the API and UI are served from the same origin in dev and production alike:
 
 ```bash
 npm install
 npm run dev        # http://localhost:8687
-```
 
-Or in Docker:
-
-```bash
-docker compose -f docker-compose.dev.yml up -d
-```
-
-Tests and typecheck:
-
-```bash
 npm test
 npm run typecheck
 ```
 
-## Versioning
+Or in Docker: `docker compose -f docker-compose.dev.yml up -d`
 
-The version is defined once in `shared/version.ts`, served at `/api/version`, and shown in the sidebar + login screen. Bump it there on release.
+Working on the code? `CLAUDE.md` documents the conventions and the non-obvious traps.
 
 ## Stack
 

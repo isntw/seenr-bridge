@@ -96,6 +96,11 @@ CREATE TABLE IF NOT EXISTS shared_titles (
   title TEXT,
   year TEXT,
   image TEXT,
+  -- Plex's own id for the title (plex://show/... or plex://movie/...). This, not
+  -- rating_key, is what identifies the title: the same show in two libraries has two
+  -- rating_keys but ONE guid. Nullable because a row shared before this column
+  -- existed genuinely has no known guid until /api/shared backfills it.
+  guid TEXT,
   -- Which library the title was picked from. Recorded because two active libraries
   -- can hold the same title under different rating_keys, and the pipeline gates on
   -- section: a share pointing at the copy you don't play from forwards nothing, and
@@ -167,8 +172,14 @@ CREATE TABLE IF NOT EXISTS shared_title_profiles (
   if (!eventCols.includes('plex_status'))
     db.exec('ALTER TABLE events ADD COLUMN plex_status INTEGER')
 
-  // Defaults to 0, deliberately inverting the "empty means all" convention that
-  // settings.libraries uses. That convention is safe because it only ever widens
+  // Nullable for the same reason as library_name above: a title shared before this
+  // column existed has no known guid until /api/shared looks it up, and NULL is what
+  // tells "not resolved yet" apart from "resolved to nothing".
+  if (!sharedCols.includes('guid'))
+    db.exec('ALTER TABLE shared_titles ADD COLUMN guid TEXT')
+
+  // plex_sync defaults to 0, deliberately inverting the "empty means all" convention
+  // that settings.libraries uses. That convention is safe because it only ever widens
   // forwarding; this one writes into OTHER PEOPLE'S Plex libraries, so an upgrade
   // must not start doing that to titles shared months ago.
   if (!sharedCols.includes('plex_sync'))
@@ -376,6 +387,7 @@ export interface SharedTitleRow {
   image: string | null
   section_id: string | null
   library_name: string | null
+  guid: string | null
   created: number
   plex_sync: number
 }
@@ -389,6 +401,7 @@ export function sharedTitleToWire(r: SharedTitleRow, profiles: number[]): Shared
     image: r.image,
     section_id: r.section_id,
     library_name: r.library_name,
+    guid: r.guid,
     plex_sync: !!r.plex_sync,
     profiles,
   }
@@ -418,6 +431,7 @@ export function setSharedTitle(
     image?: string
     section_id?: string
     library_name?: string
+    guid?: string
     plex_sync?: number
   },
   profiles: number[],
@@ -436,12 +450,13 @@ export function setSharedTitle(
     // assignment instead — both the add flow and the edit modal always carry the
     // checkbox state, so an absent value means "off", not "unknown".
     db.prepare(
-      `INSERT INTO shared_titles (rating_key, media_type, title, year, image, section_id, library_name, created, plex_sync)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO shared_titles (rating_key, media_type, title, year, image, section_id, library_name, guid, created, plex_sync)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(rating_key) DO UPDATE SET media_type=excluded.media_type, title=excluded.title, year=excluded.year, image=excluded.image,
          plex_sync=excluded.plex_sync,
          section_id=COALESCE(excluded.section_id, shared_titles.section_id),
-         library_name=COALESCE(excluded.library_name, shared_titles.library_name)`,
+         library_name=COALESCE(excluded.library_name, shared_titles.library_name),
+         guid=COALESCE(excluded.guid, shared_titles.guid)`,
     ).run(
       t.rating_key,
       t.media_type,
@@ -450,6 +465,7 @@ export function setSharedTitle(
       t.image ?? null,
       t.section_id ?? null,
       t.library_name ?? null,
+      t.guid ?? null,
       Date.now(),
       t.plex_sync ?? 0,
     )
@@ -471,19 +487,54 @@ export function setSharedTitleLibrary(rating_key: string, section_id: string, li
     .run(section_id, library_name, rating_key)
 }
 
-// Mappings that co-watch a given title key — the fan-out recipients.
-export function getSharedRecipients(rating_key: string): MappingRow[] {
+/** Fill in the Plex guid for a title shared before that column existed. Same shape and
+ *  reason as setSharedTitleLibrary: backfill only, never touching profiles. */
+export function setSharedTitleGuid(rating_key: string, guid: string): void {
+  useDb()
+    .prepare('UPDATE shared_titles SET guid = ? WHERE rating_key = ? AND guid IS NULL')
+    .run(guid, rating_key)
+}
+
+// Matching a share by rating_key ALONE is not enough, and the failure is silent.
+// Two libraries can hold the same title under different rating_keys — a real setup
+// here has both `TV Shows`/`Seriale` and `Movies`/`Filme` — so a share created from
+// the copy you don't play from never matches, and the watch looks unshared: no
+// fan-out, no Plex, no error. Observed live on House (9815 in Seriale vs 9809 in TV
+// Shows).
+//
+// Plex gives both copies the SAME guid (`plex://show/5d9c…` for either House), and
+// every episode carries it as grandparent_guid, so the guid is what actually
+// identifies the title. rating_key stays in the match as a fallback for rows shared
+// before the column existed and not yet backfilled.
+const SHARE_MATCH = `(t.rating_key = @rating_key OR (@guid <> '' AND t.guid = @guid))`
+
+/** Mappings that co-watch a given title — the fan-out recipients. DISTINCT because a
+ *  title deliberately shared from both libraries yields two rows whose profiles
+ *  overlap; the watcher should be delivered to once, not twice. */
+export function getSharedRecipients(rating_key: string, guid = ''): MappingRow[] {
   return useDb()
-    .prepare('SELECT m.* FROM mappings m JOIN shared_title_profiles s ON s.mapping_id = m.id WHERE s.rating_key = ?')
-    .all(rating_key) as MappingRow[]
+    .prepare(
+      `SELECT DISTINCT m.* FROM mappings m
+         JOIN shared_title_profiles s ON s.mapping_id = m.id
+         JOIN shared_titles t ON t.rating_key = s.rating_key
+        WHERE ${SHARE_MATCH}`,
+    )
+    .all({ rating_key, guid }) as MappingRow[]
 }
 
 /** The share row itself. getSharedRecipients answers "who co-watches this"; this
- *  answers "how is the share configured" — which the pipeline needs for plex_sync. */
-export function getSharedTitle(rating_key: string): SharedTitleRow | undefined {
+ *  answers "how is the share configured" — which the pipeline needs for plex_sync.
+ *  An exact rating_key hit wins over a guid hit, so the row the operator actually
+ *  configured is the one whose settings apply. */
+export function getSharedTitle(rating_key: string, guid = ''): SharedTitleRow | undefined {
   return useDb()
-    .prepare('SELECT * FROM shared_titles WHERE rating_key = ?')
-    .get(rating_key) as SharedTitleRow | undefined
+    .prepare(
+      `SELECT t.* FROM shared_titles t
+        WHERE ${SHARE_MATCH}
+        ORDER BY (t.rating_key = @rating_key) DESC
+        LIMIT 1`,
+    )
+    .get({ rating_key, guid }) as SharedTitleRow | undefined
 }
 
 const MAX_EVENTS = 1000

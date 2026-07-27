@@ -20,6 +20,9 @@ export default defineEventHandler(async (event) => {
       title: typeof b.title === 'string' ? b.title : undefined,
       year: typeof b.year === 'string' ? b.year : undefined,
       image: typeof b.image === 'string' ? b.image : undefined,
+      // Absent on an edit-mode save; setSharedTitle COALESCEs rather than wiping.
+      section_id: typeof b.section_id === 'string' ? b.section_id : undefined,
+      library_name: typeof b.library_name === 'string' ? b.library_name : undefined,
     },
     profiles,
   )

@@ -94,6 +94,12 @@ CREATE TABLE IF NOT EXISTS shared_titles (
   title TEXT,
   year TEXT,
   image TEXT,
+  -- Which library the title was picked from. Recorded because two active libraries
+  -- can hold the same title under different rating_keys, and the pipeline gates on
+  -- section: a share pointing at the copy you don't play from forwards nothing, and
+  -- without this the row gives no clue why.
+  section_id TEXT,
+  library_name TEXT,
   created INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS shared_title_profiles (
@@ -133,6 +139,15 @@ CREATE TABLE IF NOT EXISTS shared_title_profiles (
     db.exec('ALTER TABLE mappings ADD COLUMN sync_movies INTEGER NOT NULL DEFAULT 1')
   if (!mappingCols.includes('sync_episodes'))
     db.exec('ALTER TABLE mappings ADD COLUMN sync_episodes INTEGER NOT NULL DEFAULT 1')
+
+  // Nullable, not defaulted: a title shared before this column existed genuinely
+  // has no known library, and NULL is what lets /api/shared tell "not looked up
+  // yet" apart from "looked up and Tautulli had nothing".
+  const sharedCols = cols('shared_titles')
+  if (!sharedCols.includes('section_id'))
+    db.exec('ALTER TABLE shared_titles ADD COLUMN section_id TEXT')
+  if (!sharedCols.includes('library_name'))
+    db.exec('ALTER TABLE shared_titles ADD COLUMN library_name TEXT')
 }
 
 export interface SettingsRow {
@@ -308,6 +323,8 @@ export interface SharedTitleRow {
   title: string | null
   year: string | null
   image: string | null
+  section_id: string | null
+  library_name: string | null
   created: number
 }
 
@@ -318,6 +335,8 @@ export function sharedTitleToWire(r: SharedTitleRow, profiles: number[]): Shared
     title: r.title,
     year: r.year,
     image: r.image,
+    section_id: r.section_id,
+    library_name: r.library_name,
     profiles,
   }
 }
@@ -338,7 +357,15 @@ export function listSharedTitles(): SharedTitle[] {
 
 // Set (or clear) the profiles co-watching a title. Empty list removes the share.
 export function setSharedTitle(
-  t: { rating_key: string; media_type: string; title?: string; year?: string; image?: string },
+  t: {
+    rating_key: string
+    media_type: string
+    title?: string
+    year?: string
+    image?: string
+    section_id?: string
+    library_name?: string
+  },
   profiles: number[],
 ): void {
   const clean = Array.from(new Set(profiles.filter((n) => Number.isInteger(n))))
@@ -349,16 +376,41 @@ export function setSharedTitle(
       db.prepare('DELETE FROM shared_titles WHERE rating_key = ?').run(t.rating_key)
       return
     }
+    // COALESCE on the library columns, not plain assignment: the edit modal saves a
+    // profile change without a library (a SharedRow carries none), and overwriting
+    // with NULL there would erase what the add flow recorded.
     db.prepare(
-      `INSERT INTO shared_titles (rating_key, media_type, title, year, image, created)
-       VALUES (?, ?, ?, ?, ?, ?)
-       ON CONFLICT(rating_key) DO UPDATE SET media_type=excluded.media_type, title=excluded.title, year=excluded.year, image=excluded.image`,
-    ).run(t.rating_key, t.media_type, t.title ?? null, t.year ?? null, t.image ?? null, Date.now())
+      `INSERT INTO shared_titles (rating_key, media_type, title, year, image, section_id, library_name, created)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(rating_key) DO UPDATE SET media_type=excluded.media_type, title=excluded.title, year=excluded.year, image=excluded.image,
+         section_id=COALESCE(excluded.section_id, shared_titles.section_id),
+         library_name=COALESCE(excluded.library_name, shared_titles.library_name)`,
+    ).run(
+      t.rating_key,
+      t.media_type,
+      t.title ?? null,
+      t.year ?? null,
+      t.image ?? null,
+      t.section_id ?? null,
+      t.library_name ?? null,
+      Date.now(),
+    )
     db.prepare('DELETE FROM shared_title_profiles WHERE rating_key = ?').run(t.rating_key)
     const ins = db.prepare('INSERT INTO shared_title_profiles (rating_key, mapping_id) VALUES (?, ?)')
     for (const id of clean) ins.run(t.rating_key, id)
   })
   tx()
+}
+
+/** Fill in the library for a title shared before those columns existed. Separate
+ *  from setSharedTitle because this must not touch profiles or re-stamp anything —
+ *  it only backfills, and only where the value is still unknown. */
+export function setSharedTitleLibrary(rating_key: string, section_id: string, library_name: string): void {
+  useDb()
+    .prepare(
+      'UPDATE shared_titles SET section_id = ?, library_name = ? WHERE rating_key = ? AND library_name IS NULL',
+    )
+    .run(section_id, library_name, rating_key)
 }
 
 // Mappings that co-watch a given title key — the fan-out recipients.

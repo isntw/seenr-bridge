@@ -10,6 +10,10 @@ export interface SharedTitlePayload {
   title: string | null
   year: string | null
   image: string | null
+  /** Only the add flow knows these — it picked the title out of a named library.
+   *  Editing sends neither, and the server keeps what it already has. */
+  section_id?: string
+  library_name?: string
   profiles: number[]
   /** Run the retroactive backfill after the share lands. */
   syncPrevious: boolean
@@ -25,6 +29,10 @@ export interface SharedRow {
   /** `image` routed through /api/image, which proxies Plex art via Tautulli so
    *  the API key never reaches the browser. Null when the title has no art. */
   poster: string | null
+  /** Null when unknown — either shared before the column existed and not yet
+   *  backfilled, or a rating_key Tautulli can no longer resolve. */
+  section_id: string | null
+  library_name: string | null
   isShow: boolean
   /** Mapping ids this title is shared with. */
   profiles: number[]

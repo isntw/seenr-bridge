@@ -227,3 +227,60 @@ describe('settings libraries round-trip', () => {
     expect(db.settingsToWire(db.getSettings()).libraries).toEqual(['3'])
   })
 })
+
+// The library a shared title came from decides whether the pipeline forwards it, so
+// losing it silently would be worse than never storing it.
+describe('shared title libraries', () => {
+  async function withMapping() {
+    const db = await freshDb()
+    const m = db.upsertMapping('alice', 'tok', 1)
+    return { db, id: m.id }
+  }
+
+  it('stores the library it was added from', async () => {
+    const { db, id } = await withMapping()
+    db.setSharedTitle(
+      { rating_key: '12266', media_type: 'movie', title: 'Way of Water', section_id: '1', library_name: 'Movies' },
+      [id],
+    )
+
+    const [t] = db.listSharedTitles()
+    expect(t).toMatchObject({ section_id: '1', library_name: 'Movies' })
+  })
+
+  it('keeps the stored library when an edit-mode save omits it', async () => {
+    const { db, id } = await withMapping()
+    db.setSharedTitle(
+      { rating_key: '12266', media_type: 'movie', title: 'Way of Water', section_id: '1', library_name: 'Movies' },
+      [id],
+    )
+    // What the edit modal sends: same title, changed profiles, no library.
+    db.setSharedTitle({ rating_key: '12266', media_type: 'movie', title: 'Way of Water' }, [id])
+
+    const [t] = db.listSharedTitles()
+    expect(t!.library_name).toBe('Movies')
+    expect(t!.section_id).toBe('1')
+  })
+
+  it('is null for a title shared without one', async () => {
+    const { db, id } = await withMapping()
+    db.setSharedTitle({ rating_key: '999', media_type: 'show', title: 'Legacy' }, [id])
+
+    const [t] = db.listSharedTitles()
+    expect(t!.library_name).toBeNull()
+    expect(t!.section_id).toBeNull()
+  })
+
+  it('backfills only while the library is still unknown', async () => {
+    const { db, id } = await withMapping()
+    db.setSharedTitle({ rating_key: '999', media_type: 'show', title: 'Legacy' }, [id])
+
+    db.setSharedTitleLibrary('999', '6', 'Seriale')
+    expect(db.listSharedTitles()[0]).toMatchObject({ section_id: '6', library_name: 'Seriale' })
+
+    // A second lookup must not overwrite a known value — that would let a stale
+    // reply clobber what the add flow recorded.
+    db.setSharedTitleLibrary('999', '2', 'TV Shows')
+    expect(db.listSharedTitles()[0]).toMatchObject({ section_id: '6', library_name: 'Seriale' })
+  })
+})

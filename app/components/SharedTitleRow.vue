@@ -56,21 +56,27 @@ function assigned(mappings: Mapping[], profiles: number[]) {
         />
       </div>
 
-      <!-- Static pills, deliberately not UButtons: they report who this is shared
-           with, they don't change it. -->
+      <!-- Which library the key belongs to. Not decoration: the pipeline gates on
+           section, so a share pointing into a library you don't play from forwards
+           nothing, and this row is the only place that would ever show it. -->
+      <div v-if="row.library_name" class="mt-1 truncate text-xs text-dimmed">
+        {{ row.library_name }}
+      </div>
+
+      <!-- Static badges, deliberately not UButtons: they report who this is shared
+           with, they don't change it. UBadge's own `avatar` prop carries the
+           initials, so the badge theme sizes the avatar instead of a hand-tuned
+           override, and these match the show/movie badge above. -->
       <div class="mt-2 flex flex-wrap gap-1.5">
-        <span
+        <UBadge
           v-for="m in assigned(mappings, row.profiles)"
           :key="m.id"
-          class="inline-flex items-center gap-1.5 rounded-full bg-primary-600/20 py-1 pl-1 pr-2.5 text-xs text-primary-200 ring-1 ring-primary-400/30"
-        >
-          <UAvatar
-            :text="initials(m.username)"
-            size="3xs"
-            :ui="{ root: 'bg-inverted/15', fallback: 'text-inherit text-[9px]' }"
-          />
-          {{ m.username }}
-        </span>
+          color="primary"
+          variant="subtle"
+          size="sm"
+          :avatar="{ text: initials(m.username) }"
+          :label="m.username"
+        />
 
         <span v-if="!row.profiles.length" class="text-xs text-warning">
           No profiles assigned — nothing is being co-watched.

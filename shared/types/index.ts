@@ -153,6 +153,10 @@ export interface SharedTitle {
   title: string | null
   year: string | null
   image: string | null
+  /** The library this key belongs to. Null for a title shared before the columns
+   *  existed and whose lookup hasn't succeeded yet — see /api/shared's backfill. */
+  section_id: string | null
+  library_name: string | null
   profiles: number[] // mapping ids
 }
 

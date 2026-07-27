@@ -41,6 +41,8 @@ const rows = computed<SharedRow[]>(() =>
       year: s.year,
       image: s.image,
       poster: s.image ? `/api/image?path=${encodeURIComponent(s.image)}` : null,
+      section_id: s.section_id,
+      library_name: s.library_name,
       isShow: s.media_type === 'show',
       profiles: s.profiles,
       isShared: s.profiles.length > 0,
@@ -84,6 +86,8 @@ async function saveTitle(p: SharedTitlePayload) {
         title: p.title ?? undefined,
         year: p.year ?? undefined,
         image: p.image ?? undefined,
+        section_id: p.section_id,
+        library_name: p.library_name,
         profiles: p.profiles,
       },
     })

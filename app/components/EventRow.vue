@@ -110,22 +110,23 @@ function recipientStatus(r: EventRecipient) {
         <div v-if="derived.sub" class="mt-0.5 truncate text-xs text-muted">{{ derived.sub }}</div>
 
         <!-- Who received it. Each carries its own colour because one profile can
-             be accepted while another is rejected. -->
+             be accepted while another is rejected. UBadge rather than a hand-rolled
+             pill, so these sit on the same sizing scale as the media/event badges
+             above instead of a one-off 11px. -->
         <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
-          <span
+          <UBadge
             v-for="r in group.recipients"
             :key="r.id"
-            class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] ring-1"
-            :class="r.ok
-              ? 'bg-success/10 text-success ring-success/25'
-              : 'bg-error/10 text-error ring-error/25'"
-            :title="`${r.username}: ${recipientStatus(r)}`"
-          >
-            <UIcon :name="r.ok ? 'i-lucide-check' : 'i-lucide-x'" class="size-3 shrink-0" />
-            {{ r.username }}
-          </span>
+            :color="r.ok ? 'success' : 'error'"
+            variant="subtle"
+            size="sm"
+            :leading-icon="r.ok ? 'i-lucide-check' : 'i-lucide-x'"
+            :label="r.username ?? 'unknown'"
+            :title="`${r.username ?? 'unknown'}: ${recipientStatus(r)}`"
+          />
 
-          <code class="rounded bg-elevated px-1.5 py-0.5 font-mono text-[11px] text-dimmed ring-1 ring-default">{{ matchedBy }}</code>
+          <!-- `as="code"` keeps it marked up as the raw value it quotes. -->
+          <UBadge as="code" color="neutral" variant="subtle" size="sm" class="font-mono" :label="matchedBy" />
           <span class="text-xs text-dimmed sm:hidden">{{ timeAgo }}</span>
         </div>
       </div>

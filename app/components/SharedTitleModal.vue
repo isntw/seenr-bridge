@@ -97,7 +97,8 @@ const subject = computed(() => {
 const subjectMeta = computed(() => {
   const s = subject.value
   if (!s) return ''
-  return [s.year, picked.value?.library_name || s.media_type].filter(Boolean).join(' · ')
+  const library = picked.value?.library_name || props.row?.library_name
+  return [s.year, library || s.media_type].filter(Boolean).join(' · ')
 })
 
 // Falls back to the selected tab, not just the picked title. Before anything is
@@ -228,7 +229,15 @@ function posterFor(image: string | null | undefined) {
 function submit() {
   const s = subject.value
   if (!s || !profileIds.value.length) return
-  emit('submit', { ...s, profiles: [...profileIds.value], syncPrevious: syncChoice.value === 'all' })
+  emit('submit', {
+    ...s,
+    // Only the add flow has these; on edit they're omitted and the server keeps
+    // the stored values rather than being handed nulls.
+    section_id: picked.value?.section_id,
+    library_name: picked.value?.library_name,
+    profiles: [...profileIds.value],
+    syncPrevious: syncChoice.value === 'all',
+  })
 }
 </script>
 

@@ -173,7 +173,7 @@ export async function processEvent(
   }
 
   if (!settings.forward_enabled)
-    return fail('Forwarding is disabled in settings', common)
+    return fail('Syncing is disabled in settings', common)
 
   // Fan-out: if this title is shared AND the watcher is one of its profiles,
   // deliver to every assigned profile; otherwise just the watcher.
@@ -218,7 +218,7 @@ export async function backfillSharedTitle(ratingKey: string): Promise<BackfillRe
   const empty = { items: 0, profiles: 0, delivered: 0, ok_count: 0, fail_count: 0 }
 
   if (!settings.tautulli_url || !settings.tautulli_apikey) return { ok: false, reason: 'Tautulli not configured', ...empty }
-  if (!settings.forward_enabled) return { ok: false, reason: 'Forwarding is disabled in settings', ...empty }
+  if (!settings.forward_enabled) return { ok: false, reason: 'Syncing is disabled in settings', ...empty }
 
   const share = listSharedTitles().find((s) => s.rating_key === ratingKey)
   if (!share) return { ok: false, reason: 'Title is not shared', ...empty }

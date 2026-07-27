@@ -10,6 +10,10 @@ Notable changes per release. Versions follow [semantic versioning](https://semve
 - Settings gained a Plex step. Sign in once as the server owner and the bridge finds each co-watcher's own Plex access by itself, including profiles you add later. It reports how many of your mapped users it can act for, so a gap is visible before it matters rather than as a silent no-op. Anyone it cannot find — typically a Plex Home profile, which Plex does not list — can be given a token by hand under Configure.
 - Dashboard event rows show whether the Plex write landed alongside the seenr result.
 
+### Changed
+
+- The master switch is now labelled **Syncing** rather than Forwarding, because it gates the Plex writes as well — naming it after one of the two destinations understated what turning it off does. Behaviour is unchanged: off still means nothing is sent anywhere. Events recorded while it is off now read "Syncing is disabled in settings".
+
 ### Notes
 
 - Watched state in Plex belongs to an account rather than to an item, so marking a co-watcher's copy requires that co-watcher's own access. Discovered tokens are held in memory only and never written to the database.

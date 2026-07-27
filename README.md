@@ -2,7 +2,7 @@
 
 A small self-hosted service that makes **Tautulli → [seenr](https://seenr.app)** scrobbling work correctly for **TV episodes and movies**, for **every Plex user** — with a web UI to set it up and watch it work.
 
-![version](https://img.shields.io/badge/version-2.1.0-8b5cf6)
+![version](https://img.shields.io/badge/version-2.1.1-8b5cf6)
 
 ![The dashboard — recent scrobbles, with co-watched titles collapsed into one row per watch](docs/dashboard.png)
 
@@ -115,7 +115,7 @@ The **Shared** page is for titles more than one person watches together. Add a t
 - **Add title** opens a picker — search your TV or movie library, tick the profiles, and choose what to do about watches that already happened: sync them all retroactively, or start from now.
 - Clicking a row opens the same modal to change who it's shared with, re-run a retroactive sync, or remove it.
 
-Retroactive syncing replays what each profile has already finished, so it can post a lot of scrobbles at once — the modal defaults to leaving existing watches alone when you're editing.
+Retroactive syncing replays what each profile has already finished, so it can post a lot of scrobbles at once. The modal always defaults to **only new watches** — a backfill is something you opt into, in both add and edit.
 
 ## Advanced
 

@@ -19,6 +19,10 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history and tags, so the notes fallback can diff against the previous
+          # release with `git log`.
+          fetch-depth: 0
 
       # The release is driven by shared/version.ts, not by a pushed tag: a tag created
       # with GITHUB_TOKEN does NOT trigger workflows, so a separate tag-triggered build
@@ -85,9 +89,9 @@ jobs:
           VERSION: ${{ steps.v.outputs.version }}
         run: |
           set -euo pipefail
-          # Prefer a hand-written CHANGELOG.md section, fall back to generated notes so
-          # a release is never blocked on having written one.
           notes=$(mktemp)
+
+          # Preferred: the hand-written CHANGELOG.md section for this version.
           if [ -f CHANGELOG.md ]; then
             awk -v v="$VERSION" '
               $0 ~ "^## +\\[?" v "\\]?" { on = 1; next }
@@ -95,12 +99,29 @@ jobs:
               on { print }
             ' CHANGELOG.md > "$notes"
           fi
+
           if [ -s "$notes" ]; then
-            echo "notes: CHANGELOG.md section" >> "$GITHUB_STEP_SUMMARY"
-            gh release create "v$VERSION" --target "$GITHUB_SHA" --title "v$VERSION" \
-              --latest --notes-file "$notes"
+            source="CHANGELOG.md section"
           else
-            echo "notes: auto-generated (no CHANGELOG.md section for $VERSION)" >> "$GITHUB_STEP_SUMMARY"
-            gh release create "v$VERSION" --target "$GITHUB_SHA" --title "v$VERSION" \
-              --latest --generate-notes
+            # Deliberately NOT --generate-notes: it builds the body from merged pull
+            # requests, and this repo commits straight to main, so it yields nothing
+            # but a compare link. The commit log is at least readable.
+            source="commit log"
+            prev=$(git describe --tags --abbrev=0 HEAD 2>/dev/null || true)
+            if [ -n "$prev" ]; then
+              git log --no-merges --pretty='- %s' "$prev..HEAD" \
+                | grep -v '^- chore: bump version' > "$notes" || true
+            else
+              git log --no-merges --pretty='- %s' \
+                | grep -v '^- chore: bump version' > "$notes" || true
+            fi
+            [ -s "$notes" ] || echo "- No notable changes." > "$notes"
+            if [ -n "$prev" ]; then
+              printf '\n**Full Changelog**: %s/%s/compare/%s...v%s\n' \
+                "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$prev" "$VERSION" >> "$notes"
+            fi
           fi
+
+          echo "notes: $source" >> "$GITHUB_STEP_SUMMARY"
+          gh release create "v$VERSION" --target "$GITHUB_SHA" --title "v$VERSION" \
+            --latest --notes-file "$notes"

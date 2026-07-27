@@ -2,6 +2,12 @@
 
 Notable changes per release. Versions follow [semantic versioning](https://semver.org).
 
+## 2.2.3
+
+### Changed
+
+- The README's version badge reads the latest release from shields.io instead of carrying a hardcoded number, so it can no longer drift from what is actually released.
+
 ## 2.2.2
 
 ### Internal

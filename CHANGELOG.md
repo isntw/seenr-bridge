@@ -2,6 +2,21 @@
 
 Notable changes per release. Versions follow [semantic versioning](https://semver.org).
 
+## 2.5.0
+
+### Added
+
+- **Now playing on the Dashboard.** While anyone is streaming, a card at the top shows what it is, who is watching and how far in, with a green pulsing dot that turns amber and still when the stream is paused. It appears only while something plays, and it costs nothing when the page is closed: the Dashboard asks Tautulli for live sessions on the refresh it already runs, and nothing polls in the background.
+- **Count a watch for someone who was not in the share.** Two people sit down together unplanned — pick their profiles from the Now playing card and this watch is counted for them when it finishes, at the same moment it counts for whoever pressed play. Nothing is added to the Shared page and future episodes are unaffected. It also works when the person playing is not one of your mapped users at all, which a share could never cover.
+- **Share the playing title from the same card**, for when it is not a one-off. Adding profiles this way is additive: profiles already on the title are kept, and a Plex-marking setting you had switched on stays on.
+
+### Notes
+
+- A one-off marks Plex only if that title's share already has Plex marking switched on. A quick action never starts writing into other people's Plex libraries on its own.
+- A one-off that never completes — the stream was abandoned — expires after 24 hours and sends nothing. One filed for a profile you then disable stays inert while it is disabled.
+- Disabled profiles are not offered in the card's picker, since nothing would ever be delivered to them.
+- With a one-off pending, a watch by an **unmapped** user can now produce a Dashboard row — a metadata failure or a library skip for that watch is recorded under their Tautulli username. Previously such watches were dropped silently, so these are names that have not appeared on the Dashboard before.
+
 ## 2.4.1
 
 ### Changed

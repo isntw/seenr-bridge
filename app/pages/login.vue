@@ -153,10 +153,12 @@ async function submit() {
               :label="isSetup ? 'Create account with Plex' : 'Sign in with Plex'"
               @click="signInWithPlex"
             />
-            <p class="mt-2 text-center text-xs text-dimmed">
-              {{ isSetup
-                ? 'Creates your account from your Plex identity — no password needed.'
-                : 'For the owner of the Plex server this bridge watches.' }}
+            <!-- Nothing under the button when signing in: who is allowed is the
+                 server's business, and saying so was noise on a page whose only job is
+                 to let the operator in. Setup keeps one line, because creating an
+                 account with no password is a consequence worth stating up front. -->
+            <p v-if="isSetup" class="mt-2 text-center text-xs text-dimmed">
+              Creates your account from your Plex identity — no password needed.
             </p>
           </template>
 

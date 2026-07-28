@@ -2,6 +2,20 @@
 
 Notable changes per release. Versions follow [semantic versioning](https://semver.org).
 
+## 2.4.1
+
+### Changed
+
+- **A delivered watch now reads "synced", not "checked in".** The master switch is called Syncing and a declined watch says "Syncing is disabled in settings", so the success state is now the past tense of that same verb — `synced`, `synced · 2`, `1 of 2 synced`. "Checked in" also only ever described the seenr half, while Syncing gates the Plex write too.
+- **Dashboard rows carry less.** The media type and the matched id have moved into the row's own panel: the poster already says whether it is a film, the matched id was only ever the tmdb one of the ids the panel lists in full, and as a badge the type took the same violet as the recipient badges beside it. The type now sits on the panel's detail line next to the rating_key.
+- **The reason a watch did not sync is now one banner at the top of that panel**, rather than repeated under each recipient. A fan-out that hit a single disabled setting used to print the identical sentence once per person, each below a payload dump; recipients are named only when they actually disagree. The banner is neutral for a decline, red for a lost forward, and amber when every recipient synced but a Plex write failed — that last case previously showed red, which overstated it.
+- **The Shared page rows are reorganised.** The kind and the library now read as one dimmed line — `movie · Movies` — instead of a coloured badge sitting above a separate line of text: as a badge, `show` took the same violet as the profile names directly underneath it and read like one of them. The gold Plex badge moves into its own column on the right, so it appears in the same place on every row rather than trailing titles of different lengths. That leaves two kinds of badge in a row, gold for Plex and violet for people, instead of three families across three lines.
+
+### Fixed
+
+- **A watch the bridge was told not to forward is no longer reported as a failure.** With Syncing switched off — or a library left unticked — every watch was filed as a red "failed" row with a red panel quoting the setting back at you, so a deliberately paused bridge looked broken and its failure count climbed with nothing to fix. Those watches now read **skipped** in neutral grey, and are counted apart from failures. Anything the bridge actually attempted and lost — a seenr error, an unreachable Tautulli — stays a failure, unchanged.
+- Rows recorded before this release are reclassified on upgrade, so the history reads correctly too rather than only new watches. Only the exact messages the bridge itself wrote for those two cases are matched; an older row that cannot be identified stays a failure rather than being quietly cleared.
+
 ## 2.4.0
 
 ### Added

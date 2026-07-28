@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ScrobbleEvent, Stats } from '../../shared/types'
+import type { ActivitySession, Mapping, ScrobbleEvent, Stats } from '../../shared/types'
 
 const limit = ref(25)
 
@@ -15,11 +15,33 @@ const { data: events, refresh: refreshEvents, error, status: eventsStatus } = us
   { watch: [limit], lazy: true },
 )
 
+// Live Tautulli sessions, on the same 5s tick as everything else — there is no server
+// timer behind this, so the cost is zero whenever nobody has the page open. Defaults to
+// [] because the endpoint answers [] for an idle, unconfigured OR unreachable Tautulli:
+// the card is an extra, and none of the three should stop the history from rendering.
+const { data: activity, refresh: refreshActivity } = useAsyncData<ActivitySession[]>(
+  'activity',
+  () => $fetch('/api/tautulli/activity'),
+  { default: (): ActivitySession[] => [], lazy: true },
+)
+
+// Not polled: the card needs the profile list only to offer checkboxes, and mappings
+// change when the operator edits them, not while something plays.
+const { data: mappings } = useAsyncData<Mapping[]>(
+  'mappings',
+  () => $fetch('/api/mappings'),
+  { default: (): Mapping[] => [], lazy: true },
+)
+
+// Deliberately not part of `loading`: the skeletons it drives are for the tiles and the
+// history. A slow activity call must not hold those back, and the card simply is not
+// there until it answers.
 const loading = isFirstLoad(statsStatus, eventsStatus)
 
 function refresh() {
   refreshStats()
   refreshEvents()
+  refreshActivity()
 }
 
 let timer: ReturnType<typeof setInterval> | undefined
@@ -52,6 +74,11 @@ const remaining = computed(() =>
         <div v-else class="mt-2 text-2xl font-semibold sm:text-3xl" :class="t.class">{{ t.value }}</div>
       </UCard>
     </div>
+
+    <!-- Absent, not empty, when nothing is playing: an idle card reporting a non-event
+         would sit at the top of the page permanently. `changed` refetches the sessions
+         so a queued one-off is reflected on the next tick rather than in 5s. -->
+    <NowPlaying :sessions="activity ?? []" :mappings="mappings ?? []" @changed="refreshActivity()" />
 
     <UCard :ui="{ body: 'p-0 sm:p-0' }">
       <template #header>

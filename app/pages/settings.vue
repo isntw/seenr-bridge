@@ -297,9 +297,26 @@ const plexError = ref<string | null>(null)
 
 async function loadPlexLink() {
   try {
-    plexLink.value = await $fetch<PlexLinkStatus>('/api/plex/users')
+    plexLink.value = await $fetch<PlexLinkStatus>('/api/plex/status')
   } catch (e) {
     plexError.value = apiErrorMessage(e, 'Could not read the Plex link status.')
+  }
+}
+
+async function disconnectPlex() {
+  plexBusy.value = true
+  plexError.value = null
+  try {
+    await $fetch('/api/plex', { method: 'DELETE' })
+    await store.fetch()
+    plexLink.value = { connected: false, matched: [], unmatched: [] }
+    // Shares keep their switch on purpose — re-linking should not mean re-ticking
+    // every title — so say so rather than let it look like nothing happened.
+    toast.add({ title: 'Plex disconnected. Shared titles keep their setting.', color: 'success' })
+  } catch (e) {
+    plexError.value = apiErrorMessage(e, 'Could not disconnect Plex.')
+  } finally {
+    plexBusy.value = false
   }
 }
 
@@ -664,53 +681,99 @@ async function runTest(dryRun: boolean) {
     </SetupStep>
 
     <SetupStep :n="3" title="Plex" badge="optional" hint="mark co-watched titles watched in Plex too">
-      <p class="text-sm text-muted">
-        Sign in once as the server owner. The bridge can then mark a shared title watched in
-        each co-watcher's own Plex, not just in seenr.
-      </p>
+      <UAlert v-if="plexError" color="error" variant="subtle" class="mb-3" :description="plexError" />
 
-      <UAlert v-if="plexError" color="error" variant="subtle" class="mt-3" :description="plexError" />
+      <!-- Not connected: one sentence and the brand button, nothing else to look at. -->
+      <template v-if="!plexLink?.connected">
+        <p class="text-sm text-muted">
+          Sign in once as the server owner. The bridge can then mark a shared title watched
+          in each co-watcher's own Plex, not just in seenr.
+        </p>
+        <div class="mt-3 flex flex-wrap items-center gap-3">
+          <PlexSignInButton :loading="plexBusy" @click="signInWithPlex" />
+          <span v-if="plexBusy" class="text-xs text-dimmed">
+            Approve the request in the Plex tab that just opened…
+          </span>
+        </div>
+      </template>
 
-      <div class="mt-3 flex flex-wrap items-center gap-3">
-        <!-- Plex brand button. The colours are hardcoded rather than themed because they
-             are Plex's, not ours: #EBAF00 on near-black is the sign-in treatment their
-             other integrations use, and it must not follow the violet app theme. The mark
-             is inlined instead of pulling in @iconify-json/simple-icons for one glyph. -->
-        <UButton
-          :loading="plexBusy"
-          class="bg-[#EBAF00] text-black font-semibold hover:bg-[#f5bd1f] focus-visible:outline-[#EBAF00] disabled:bg-[#EBAF00]/60"
-          @click="signInWithPlex"
-        >
-          <template v-if="!plexBusy" #leading>
-            <svg viewBox="0 0 32 32" class="size-4 shrink-0" aria-hidden="true">
-              <path fill="currentColor" d="M15.527 0H6.24l10.239 16L6.24 32h9.287L25.76 16z" />
-            </svg>
-          </template>
-          {{ plexLink?.connected ? 'Reconnect Plex' : 'Sign in with Plex' }}
-        </UButton>
+      <!-- Connected: the server card. Which account, which server, and — the part that
+           actually predicts whether a watch will land — which users are reachable. -->
+      <template v-else>
+        <div class="rounded-lg bg-elevated/40 p-3 ring-1 ring-default">
+          <div class="flex flex-wrap items-start gap-3">
+            <span
+              class="grid size-9 shrink-0 place-items-center rounded-md bg-[#EBAF00]/10 text-[#EBAF00] ring-1 ring-[#EBAF00]/30"
+            >
+              <svg viewBox="0 0 32 32" class="size-4" aria-hidden="true">
+                <path fill="currentColor" d="M15.527 0H6.24l10.239 16L6.24 32h9.287L25.76 16z" />
+              </svg>
+            </span>
 
-        <span v-if="plexBusy" class="text-xs text-dimmed">
-          Approve the request in the Plex tab that just opened…
-        </span>
-        <UBadge
-          v-else-if="plexLink?.connected"
-          :color="plexLink.unmatched.length ? 'warning' : 'success'"
-          variant="subtle"
-          size="sm"
-          :label="matchedLabel"
-        />
-      </div>
+            <div class="min-w-0 flex-1">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="truncate text-sm font-medium text-highlighted">
+                  {{ plexLink.server?.name || 'Plex server' }}
+                </span>
+                <UBadge
+                  v-if="plexLink.server?.owned"
+                  color="success"
+                  variant="subtle"
+                  size="sm"
+                  label="owner"
+                />
+                <UBadge
+                  :color="plexLink.unmatched.length ? 'warning' : 'success'"
+                  variant="subtle"
+                  size="sm"
+                  :label="matchedLabel"
+                />
+              </div>
+              <div class="mt-0.5 truncate text-xs text-dimmed">
+                <span v-if="plexLink.account">signed in as {{ plexLink.account }}</span>
+                <template v-if="plexLink.server?.product"> · {{ plexLink.server.product }}</template>
+                <template v-if="plexLink.server?.platform"> · {{ plexLink.server.platform }}</template>
+              </div>
+              <div v-if="plexLink.server?.url" class="mt-0.5 truncate font-mono text-xs text-dimmed">
+                {{ plexLink.server.url }}
+              </div>
+            </div>
 
-      <p v-if="plexLink?.error" class="mt-2 text-xs text-warning">
-        Plex couldn't be reached: {{ plexLink.error }}
-      </p>
-      <p v-else-if="plexLink?.unmatched.length" class="mt-2 text-xs text-warning">
-        No Plex access for {{ plexLink.unmatched.join(', ') }} — usually a Plex Home profile,
-        which Plex doesn't list. Paste a token under Configure for them, or their Plex stays
-        untouched.
-      </p>
+            <div class="flex shrink-0 items-center gap-1">
+              <UButton
+                color="neutral"
+                variant="ghost"
+                size="sm"
+                icon="i-lucide-refresh-cw"
+                :loading="plexBusy"
+                label="Reconnect"
+                @click="signInWithPlex"
+              />
+              <UButton
+                color="error"
+                variant="ghost"
+                size="sm"
+                icon="i-lucide-trash-2"
+                aria-label="Disconnect Plex"
+                :disabled="plexBusy"
+                @click="disconnectPlex"
+              />
+            </div>
+          </div>
+
+          <p v-if="plexLink.error" class="mt-2 text-xs text-warning">
+            Plex couldn't be reached: {{ plexLink.error }}
+          </p>
+          <p v-else-if="plexLink.unmatched.length" class="mt-2 text-xs text-warning">
+            No Plex access for {{ plexLink.unmatched.join(', ') }} — usually a Plex Home
+            profile, which Plex doesn't list. Paste a token under Configure for them, or
+            their Plex stays untouched.
+          </p>
+        </div>
+      </template>
+
       <p class="mt-2 text-xs text-dimmed">
-        Nothing reaches Plex until you tick “Also mark watched in Plex” on a shared title.
+        Nothing reaches Plex until you turn on “Mark watched in Plex too” for a shared title.
       </p>
     </SetupStep>
 

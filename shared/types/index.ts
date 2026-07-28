@@ -171,6 +171,19 @@ export interface SharedTitle {
 /** Whether a Plex account is linked, and which mapped users have a usable token. */
 export interface PlexLinkStatus {
   connected: boolean
+  /** The signed-in Plex username. Absent when not connected or when plex.tv failed. */
+  account?: string
+  /** The server the bridge will write to, for confirmation. Fields are '' when
+   *  plex.tv's resource list could not be read — the connection still works. */
+  server?: {
+    name: string
+    machineId: string
+    url: string
+    product: string
+    platform: string
+    /** Null when unknown. False would mean the token cannot write to this server. */
+    owned: boolean | null
+  }
   matched: string[]
   unmatched: string[]
   error?: string

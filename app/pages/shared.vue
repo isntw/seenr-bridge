@@ -17,7 +17,7 @@ const { data: mappings, status: mappingsStatus } = useAsyncData<Mapping[]>(
 
 const { data: plexLink } = useAsyncData<PlexLinkStatus>(
   'plex-link',
-  () => $fetch('/api/plex/users'),
+  () => $fetch('/api/plex/status'),
   { default: (): PlexLinkStatus => ({ connected: false, matched: [], unmatched: [] }), lazy: true },
 )
 

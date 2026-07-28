@@ -2,13 +2,15 @@
 
 Notable changes per release. Versions follow [semantic versioning](https://semver.org).
 
-## 2.3.1
+## 2.4.0
 
 ### Added
 
 - **Sign in with Plex.** The login page now offers Plex sign-in to whoever **owns** the Plex server the bridge watches — the same test Tautulli uses for its own admin sign-in. There is nothing to link and nothing to configure: if you own the server, you are the operator. A user you have merely *shared* the server with is refused, since access is not ownership.
 - On a **brand-new install** Plex sign-in also creates the account, named after your Plex username and with no password. Set one later from the account menu if you want a second way in, or never — password sign-in stays closed until you do, so a passwordless account is not a way in.
 - Your password keeps working throughout, so a plex.tv outage can never lock you out. For the same reason the login page hides the Plex button when the bridge has no Tautulli connection yet: without it there is no server whose owner could be checked.
+
+## 2.3.1
 
 ### Fixed
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { getChildren, getLibraryItems, resetLibraryRefreshCooldown } from '../server/utils/tautulli'
+import { getActivity, getChildren, getLibraryItems, resetLibraryRefreshCooldown } from '../server/utils/tautulli'
 
 const fetchMock = vi.fn()
 
@@ -188,5 +188,91 @@ describe('getLibraryItems staleness refresh', () => {
     await getLibraryItems('http://tautulli:8181', 'key', { type: 'movie' })
 
     expect(mediaInfoBodies().filter((b) => b.includes('refresh=true'))).toHaveLength(2)
+  })
+})
+
+describe('getActivity', () => {
+  it('flattens sessions onto ActivitySession', async () => {
+    fetchMock.mockResolvedValue(
+      ok({
+        stream_count: '1',
+        sessions: [
+          {
+            session_key: '12',
+            rating_key: 25634,
+            media_type: 'episode',
+            title: 'Ozymandias',
+            grandparent_title: 'Breaking Bad',
+            parent_media_index: 5,
+            media_index: 14,
+            year: 2013,
+            username: 'isntw',
+            state: 'playing',
+            progress_percent: '62',
+            thumb: '/library/metadata/25634/thumb/1',
+            grandparent_thumb: '/library/metadata/999/thumb/1',
+            library_name: 'TV Shows',
+            section_id: 2,
+            guid: 'plex://episode/abc',
+            grandparent_rating_key: 999,
+            grandparent_guid: 'plex://show/def',
+          },
+        ],
+      }),
+    )
+
+    const out = await getActivity('http://tautulli:8181', 'key')
+
+    expect(out).toEqual([
+      {
+        session_key: '12',
+        rating_key: '25634',
+        media_type: 'episode',
+        title: 'Ozymandias',
+        show_title: 'Breaking Bad',
+        season: '5',
+        episode: '14',
+        year: '2013',
+        username: 'isntw',
+        state: 'playing',
+        progress_percent: 62,
+        // The show's art, not the episode's — the same choice imageFor() makes
+        // in the pipeline, so a card and its later event row show one poster.
+        image: '/library/metadata/999/thumb/1',
+        library_name: 'TV Shows',
+        section_id: '2',
+        guid: 'plex://episode/abc',
+        show_rating_key: '999',
+        show_guid: 'plex://show/def',
+      },
+    ])
+  })
+
+  it('returns [] for the idle response rather than throwing', async () => {
+    fetchMock.mockResolvedValue(ok({ stream_count: '0', sessions: [] }))
+    expect(await getActivity('http://tautulli:8181', 'key')).toEqual([])
+  })
+
+  it('degrades to [] when sessions is missing or not an array', async () => {
+    fetchMock.mockResolvedValue(ok({ stream_count: '0' }))
+    expect(await getActivity('http://tautulli:8181', 'key')).toEqual([])
+
+    fetchMock.mockResolvedValue(ok({ sessions: 'nope' }))
+    expect(await getActivity('http://tautulli:8181', 'key')).toEqual([])
+  })
+
+  it('drops a session with no rating_key — nothing can be done with it', async () => {
+    fetchMock.mockResolvedValue(
+      ok({ sessions: [{ session_key: '1', state: 'playing' }, { rating_key: 5, state: 'playing' }] }),
+    )
+    expect((await getActivity('http://tautulli:8181', 'key')).map((s) => s.rating_key)).toEqual(['5'])
+  })
+
+  it('defaults a missing guid to the empty string, not undefined', async () => {
+    fetchMock.mockResolvedValue(ok({ sessions: [{ rating_key: 5, media_type: 'movie', state: 'playing' }] }))
+    const [s] = await getActivity('http://tautulli:8181', 'key')
+    expect(s!.guid).toBe('')
+    expect(s!.show_guid).toBe('')
+    expect(s!.progress_percent).toBe(0)
   })
 })

@@ -1,7 +1,7 @@
 // Minimal Tautulli API client. Used to look up an item's REAL external IDs by
 // rating_key — the piece the Tautulli webhook template cannot provide for episodes.
 
-import type { TautulliMetadata, LibraryItem, LibraryChild } from '../../shared/types'
+import type { ActivitySession, TautulliMetadata, LibraryItem, LibraryChild } from '../../shared/types'
 
 // Tautulli wraps every response in the same envelope; only the `data` shape
 // varies by command, so callers supply that as the type parameter.
@@ -81,6 +81,32 @@ interface TautulliChildRow {
 interface TautulliChildrenData {
   children_count?: string | number
   children_list?: TautulliChildRow[]
+}
+
+interface TautulliSession {
+  session_key?: string | number
+  rating_key?: string | number
+  media_type?: string
+  title?: string
+  grandparent_title?: string
+  parent_media_index?: string | number
+  media_index?: string | number
+  year?: string | number
+  username?: string
+  state?: string
+  progress_percent?: string | number
+  thumb?: string
+  grandparent_thumb?: string
+  library_name?: string
+  section_id?: string | number
+  guid?: string
+  grandparent_rating_key?: string | number
+  grandparent_guid?: string
+}
+
+interface TautulliActivityData {
+  stream_count?: string | number
+  sessions?: TautulliSession[]
 }
 
 function base(url: string): string {
@@ -339,5 +365,45 @@ export async function getChildren(url: string, apiKey: string, ratingKey: string
       index: r.media_index != null ? String(r.media_index) : '',
       media_type: r.media_type || '',
       image: r.thumb || '',
+    }))
+}
+
+// Live sessions, for the Dashboard's Now playing card. Polled at view time only.
+//
+// Tautulli reports "nothing is playing" as a SUCCESSFUL reply with an empty
+// sessions array, so there is no error to distinguish idle from broken — every
+// shape that is not a populated array collapses to [] and the card simply does
+// not render.
+//
+// Not driven by Tautulli's on_play/on_stop notifier triggers, deliberately: those
+// post to /api/webhook/tautulli, and mapEvent() maps play/pause/stop to real Plex
+// event names that processEvent then forwards to seenr. Enabling them to learn what
+// is playing would start posting plays and stops to every user's seenr token.
+const str = (v: unknown): string => (v == null ? '' : String(v))
+
+export async function getActivity(url: string, apiKey: string): Promise<ActivitySession[]> {
+  const data = await tautulliApi<TautulliActivityData>(url, apiKey, 'get_activity')
+  const rows = Array.isArray(data?.sessions) ? data.sessions : []
+  return rows
+    .filter((s) => s.rating_key != null && String(s.rating_key) !== '')
+    .map((s) => ({
+      session_key: str(s.session_key),
+      rating_key: str(s.rating_key),
+      media_type: str(s.media_type),
+      title: str(s.title),
+      show_title: str(s.grandparent_title),
+      season: str(s.parent_media_index),
+      episode: str(s.media_index),
+      year: str(s.year),
+      username: str(s.username),
+      state: str(s.state),
+      // Tautulli sends this as a string; NaN would render as "NaN%".
+      progress_percent: Number(s.progress_percent) || 0,
+      image: s.grandparent_thumb || s.thumb || null,
+      library_name: str(s.library_name),
+      section_id: str(s.section_id),
+      guid: str(s.guid),
+      show_rating_key: str(s.grandparent_rating_key),
+      show_guid: str(s.grandparent_guid),
     }))
 }

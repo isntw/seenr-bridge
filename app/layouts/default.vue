@@ -42,14 +42,16 @@ onBeforeUnmount(() => status.stop())
       title="Seenr Bridge"
       :ui="{ content: 'bg-rail' }"
     >
+      <!-- Everything in the body, deliberately NOT the footer slot: the slideover's
+           content has `divide-y`, so a third child would draw a line above the footer
+           that the desktop rail does not have. Laid out the same way the rail is — a
+           full-height column with the footer pushed down by mt-auto — because the body
+           slot is scrollable but not itself a flex container. -->
       <template #body>
-        <AppNav />
-      </template>
-      <!-- The footer slot, not the end of the body: the slideover is full height, so a
-           version line after the nav items floats in the middle of an empty panel
-           instead of sitting at the bottom where the rail puts it. -->
-      <template #footer>
-        <AppNavFooter class="w-full" />
+        <div class="flex h-full flex-col">
+          <AppNav />
+          <AppNavFooter class="mt-auto" />
+        </div>
       </template>
     </USlideover>
 

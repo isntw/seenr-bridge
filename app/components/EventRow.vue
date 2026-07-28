@@ -132,7 +132,7 @@ function recipientIcon(r: EventRecipient) {
 
 <template>
   <UCollapsible v-model:open="open">
-    <UButton block color="neutral" variant="ghost" size="xl">
+    <UButton block color="neutral" variant="ghost" size="xl" class="p-3">
       <img
         v-if="group.image"
         :src="`/api/image?path=${encodeURIComponent(group.image)}`"

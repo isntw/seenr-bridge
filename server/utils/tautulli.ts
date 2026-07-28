@@ -228,7 +228,6 @@ export async function getLibraries(url: string, apiKey: string): Promise<Tautull
 // no longer resolves — which then render as Plex's generic placeholder poster and
 // scrobble nothing. Observed live: section "Movies" served 99 of its 308 films and
 // listed an "Avatar" whose key was long gone.
-//
 // The library row's own `count` tracks Plex correctly, so a disagreement with
 // `recordsTotal` is a reliable staleness signal. One refresh (~0.2-0.7s) fixes the
 // section for good; the cooldown means a burst of debounced searches triggers at
@@ -368,17 +367,6 @@ export async function getChildren(url: string, apiKey: string, ratingKey: string
     }))
 }
 
-// Live sessions, for the Dashboard's Now playing card. Polled at view time only.
-//
-// Tautulli reports "nothing is playing" as a SUCCESSFUL reply with an empty
-// sessions array, so there is no error to distinguish idle from broken — every
-// shape that is not a populated array collapses to [] and the card simply does
-// not render.
-//
-// Not driven by Tautulli's on_play/on_stop notifier triggers, deliberately: those
-// post to /api/webhook/tautulli, and mapEvent() maps play/pause/stop to real Plex
-// event names that processEvent then forwards to seenr. Enabling them to learn what
-// is playing would start posting plays and stops to every user's seenr token.
 const str = (v: unknown): string => (v == null ? '' : String(v))
 
 export async function getActivity(url: string, apiKey: string): Promise<ActivitySession[]> {
@@ -397,7 +385,6 @@ export async function getActivity(url: string, apiKey: string): Promise<Activity
       year: str(s.year),
       username: str(s.username),
       state: str(s.state),
-      // Tautulli sends this as a string; NaN would render as "NaN%".
       progress_percent: Number(s.progress_percent) || 0,
       image: s.grandparent_thumb || s.thumb || null,
       library_name: str(s.library_name),

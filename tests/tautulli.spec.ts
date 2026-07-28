@@ -236,8 +236,6 @@ describe('getActivity', () => {
         username: 'isntw',
         state: 'playing',
         progress_percent: 62,
-        // The show's art, not the episode's — the same choice imageFor() makes
-        // in the pipeline, so a card and its later event row show one poster.
         image: '/library/metadata/999/thumb/1',
         library_name: 'TV Shows',
         section_id: '2',

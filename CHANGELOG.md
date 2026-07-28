@@ -6,16 +6,22 @@ Notable changes per release. Versions follow [semantic versioning](https://semve
 
 ### Added
 
-- **Now playing on the Dashboard.** While anyone is streaming, a card at the top shows what it is, who is watching and how far in, with a green pulsing dot that turns amber and still when the stream is paused. It appears only while something plays, and it costs nothing when the page is closed: the Dashboard asks Tautulli for live sessions on the refresh it already runs, and nothing polls in the background.
-- **Count a watch for someone who was not in the share.** Two people sit down together unplanned — pick their profiles from the Now playing card and this watch is counted for them when it finishes, at the same moment it counts for whoever pressed play. Nothing is added to the Shared page and future episodes are unaffected. It also works when the person playing is not one of your mapped users at all, which a share could never cover.
-- **Share the playing title from the same card**, for when it is not a one-off. Adding profiles this way is additive: profiles already on the title are kept, and a Plex-marking setting you had switched on stays on.
+- **Now playing on the Dashboard.** While anyone is streaming, a card at the top shows what it is, who it already counts for and how far in — with a play, pause or buffering icon taken from Tautulli's own session state, and a progress bar along the card's bottom edge. It appears only while something plays, and it costs nothing when the page is closed: the Dashboard asks Tautulli for live sessions on the refresh it already runs, and nothing polls in the background.
+- **Watch together.** Two people sit down together unplanned: open the dialog from the card, tick who is watching with you, and the watch is counted for them when it finishes — at the same moment it counts for whoever pressed play. It works even when the person playing is not one of your mapped users at all, which a share could never cover.
+- **For an episode you choose how far it goes** — just this episode, or the whole show from now on, which shares it so every future episode fans out too. A film always creates a share, since a film is watched once and the share is the version you can see and edit afterwards on the Shared page.
+- **"Also mark watched in Plex" is asked per action**, in the same dialog, and applies to the one-off itself rather than being inherited from whatever the title's share happened to say. The card carries the gold Plex badge whenever a watch is going to write into someone's Plex.
+- **The dialog is editable.** It opens showing the current arrangement — who it counts for, and the Plex answer — so unticking someone takes them back off, and clearing every box removes the title. Update stays disabled until something actually differs.
 
 ### Notes
 
-- A one-off marks Plex only if that title's share already has Plex marking switched on. A quick action never starts writing into other people's Plex libraries on its own.
 - A one-off that never completes — the stream was abandoned — expires after 24 hours and sends nothing. One filed for a profile you then disable stays inert while it is disabled.
-- Disabled profiles are not offered in the card's picker, since nothing would ever be delivered to them.
+- Disabled profiles are not offered in the dialog, since nothing would ever be delivered to them, and a disabled profile already on a share is kept rather than dropped by a save from here.
 - With a one-off pending, a watch by an **unmapped** user can now produce a Dashboard row — a metadata failure or a library skip for that watch is recorded under their Tautulli username. Previously such watches were dropped silently, so these are names that have not appeared on the Dashboard before.
+- The animated state icon respects "reduce motion": it stops animating and the shape and colour carry the state on their own.
+
+### Changed
+
+- Rows on the Dashboard and the Shared page now have equal padding on all four sides. They inherited `px-3 py-2` from the button they are built on, so every poster sat further from the left border than from the top.
 
 ## 2.4.1
 

@@ -129,12 +129,11 @@ CREATE TABLE IF NOT EXISTS shared_title_profiles (
 
 CREATE TABLE IF NOT EXISTS pending_watches (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  -- The ITEM playing: this episode, or this film. Not the show — "count this
-  -- episode" means this one, and the watched event carries the episode's own key.
   rating_key TEXT NOT NULL,
   guid TEXT,
   mapping_id INTEGER NOT NULL,
   created INTEGER NOT NULL,
+  plex_sync INTEGER NOT NULL DEFAULT 0,
   UNIQUE (rating_key, mapping_id),
   FOREIGN KEY (mapping_id) REFERENCES mappings (id) ON DELETE CASCADE
 );
@@ -233,8 +232,6 @@ CREATE INDEX IF NOT EXISTS idx_pending_rating_key ON pending_watches (rating_key
     ).run()
   }
 
-  // A whole table rather than a column, so the guard is CREATE TABLE IF NOT EXISTS
-  // run unconditionally — cheap, and it needs no table_info probe.
   db.exec(`
     CREATE TABLE IF NOT EXISTS pending_watches (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -242,11 +239,15 @@ CREATE INDEX IF NOT EXISTS idx_pending_rating_key ON pending_watches (rating_key
       guid TEXT,
       mapping_id INTEGER NOT NULL,
       created INTEGER NOT NULL,
+      plex_sync INTEGER NOT NULL DEFAULT 0,
       UNIQUE (rating_key, mapping_id),
       FOREIGN KEY (mapping_id) REFERENCES mappings (id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_pending_rating_key ON pending_watches (rating_key);
   `)
+
+  if (!cols('pending_watches').includes('plex_sync'))
+    db.exec('ALTER TABLE pending_watches ADD COLUMN plex_sync INTEGER NOT NULL DEFAULT 0')
 }
 
 export interface SettingsRow {
@@ -612,19 +613,14 @@ export interface PendingWatchRow {
   created: number
 }
 
-/** A pending one-off, joined to the profile it is for. `id` is carried so the
- *  consumer can delete the exact row it used — which matters when the row was
- *  matched by guid and its rating_key is not the key that was played. */
 export interface PendingWatch {
   id: number
   mapping: MappingRow
+  plex_sync: boolean
 }
 
 const PENDING_TTL_MS = 24 * 60 * 60 * 1000
 
-/** Rows older than the TTL are dropped. Swept on insert, the same way
- *  insertEvent trims the events cap: an abandoned session leaves a row behind and
- *  nothing else would ever come along to clear it. */
 export function sweepPendingWatches(): number {
   return useDb()
     .prepare('DELETE FROM pending_watches WHERE created <= ?')
@@ -635,37 +631,78 @@ export function addPendingWatches(
   ratingKey: string,
   guid: string | null,
   mappingIds: number[],
+  plexSync = false,
 ): number {
   sweepPendingWatches()
   const stmt = useDb().prepare(
-    `INSERT OR IGNORE INTO pending_watches (rating_key, guid, mapping_id, created)
-     VALUES (?, ?, ?, ?)`,
+    `INSERT INTO pending_watches (rating_key, guid, mapping_id, created, plex_sync)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT (rating_key, mapping_id) DO UPDATE SET plex_sync = excluded.plex_sync`,
   )
   const now = Date.now()
-  let written = 0
+  const before = (useDb().prepare('SELECT COUNT(*) c FROM pending_watches').get() as { c: number }).c
   const tx = useDb().transaction((ids: number[]) => {
-    for (const id of ids) written += stmt.run(ratingKey, guid || null, id, now).changes
+    for (const id of ids) stmt.run(ratingKey, guid || null, id, now, plexSync ? 1 : 0)
   })
   tx(mappingIds)
-  return written
+  const after = (useDb().prepare('SELECT COUNT(*) c FROM pending_watches').get() as { c: number }).c
+  return after - before
 }
 
 export function getPendingWatches(ratingKey: string, guid?: string | null): PendingWatch[] {
-  // An empty guid must never match: it is the "Tautulli did not tell us" value,
-  // and matching on it would make every pending row match every item.
   const g = guid || null
   const rows = useDb()
     .prepare(
-      `SELECT p.id AS pending_id, m.*
+      `SELECT p.id AS pending_id, p.plex_sync AS pending_plex, m.*
          FROM pending_watches p
          JOIN mappings m ON m.id = p.mapping_id
         WHERE p.created > ?
           AND m.enabled = 1
           AND (p.rating_key = ? OR (? IS NOT NULL AND p.guid = ?))`,
     )
-    .all(Date.now() - PENDING_TTL_MS, ratingKey, g, g) as (MappingRow & { pending_id: number })[]
+    .all(Date.now() - PENDING_TTL_MS, ratingKey, g, g) as (MappingRow & {
+      pending_id: number
+      pending_plex: number
+    })[]
 
-  return rows.map(({ pending_id, ...mapping }) => ({ id: pending_id, mapping: mapping as MappingRow }))
+  return rows.map(({ pending_id, pending_plex, ...mapping }) => ({
+    id: pending_id,
+    plex_sync: !!pending_plex,
+    mapping: mapping as MappingRow,
+  }))
+}
+
+export function listPendingWatches(): {
+  rating_key: string
+  mapping_id: number
+  username: string
+  plex_sync: boolean
+}[] {
+  const rows = useDb()
+    .prepare(
+      `SELECT p.rating_key, p.mapping_id, p.plex_sync, m.username
+         FROM pending_watches p
+         JOIN mappings m ON m.id = p.mapping_id
+        WHERE p.created > ? AND m.enabled = 1
+        ORDER BY m.username COLLATE NOCASE`,
+    )
+    .all(Date.now() - PENDING_TTL_MS) as {
+      rating_key: string
+      mapping_id: number
+      plex_sync: number
+      username: string
+    }[]
+  return rows.map((r) => ({ ...r, plex_sync: !!r.plex_sync }))
+}
+
+export function deletePendingWatches(ratingKey: string, mappingIds: number[]): number {
+  if (!mappingIds.length) return 0
+  return useDb()
+    .prepare(
+      `DELETE FROM pending_watches
+        WHERE rating_key = ? AND mapping_id IN (${mappingIds.map(() => '?').join(',')})`,
+    )
+    .run(ratingKey, ...mappingIds).changes
 }
 
 export function deletePendingWatchesByIds(ids: number[]): void {

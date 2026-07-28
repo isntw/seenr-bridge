@@ -97,23 +97,16 @@ export interface TautulliMetadata {
   grandparent_thumb: string
 }
 
-/** One live Tautulli playback session, flattened for the Now playing card.
- *  `guid` / `show_guid` are '' when Tautulli's session payload omits them — the
- *  card then resolves them with get_metadata on click rather than per poll. */
 export interface ActivitySession {
   session_key: string
   rating_key: string
   media_type: string
-  /** Episode title for an episode, film title for a movie. */
   title: string
-  /** The show's title; '' for a movie. */
   show_title: string
   season: string
   episode: string
   year: string
   username: string
-  /** 'playing' | 'paused' | 'buffering', per Tautulli. Not narrowed: Tautulli
-   *  may add states and an unknown one must render, not crash. */
   state: string
   progress_percent: number
   image: string | null
@@ -122,6 +115,13 @@ export interface ActivitySession {
   guid: string
   show_rating_key: string
   show_guid: string
+}
+
+export interface PendingWatchEntry {
+  rating_key: string
+  mapping_id: number
+  username: string
+  plex_sync: boolean
 }
 
 export interface IncomingEvent {

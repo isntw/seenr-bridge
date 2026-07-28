@@ -1,14 +1,4 @@
 <script setup lang="ts">
-// The gold Plex mark, shared by the Shared page rows and the Dashboard event rows so
-// "this touches Plex" looks the same wherever it appears. Extracted because it is now
-// needed twice in one row — inline on a phone, in the right-hand column from `sm` up —
-// and a third time on the Dashboard.
-//
-// Plex's own brand gold rather than a theme colour: the badge means "writes outside the
-// bridge", so it must not blend into the violet badges beside it. `warning` is for the
-// Dashboard's failed-write case, where amber is the point. The chevron is inlined as SVG
-// because @iconify-json/simple-icons would be a whole collection for one glyph, and only
-// lucide is installed.
 withDefaults(
   defineProps<{
     label?: string

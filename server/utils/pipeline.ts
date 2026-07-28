@@ -162,11 +162,6 @@ export async function processEvent(
 
   const trigger = getMappingByUsername(input.username)
 
-  // Pending one-offs are consulted BEFORE the unmapped-user return below, and this
-  // is the reason the query takes only the rating_key: it runs on a path that used
-  // to cost nothing, so it has to stay one indexed SELECT with no Tautulli call.
-  // Without it, "a guest account is playing something, count it for me" — the case
-  // the Now playing card exists for — would silently do nothing.
   const pendingByKey = getPendingWatches(input.rating_key)
 
   const triggerUsable = !!trigger && !!trigger.enabled
@@ -212,24 +207,19 @@ export async function processEvent(
   const guid = titleGuidFor(meta)
   const shared = getSharedRecipients(key, guid)
 
-  // Queried a second time, now that metadata is in hand: the first pass could only
-  // match the exact rating_key, and a pending row filed against the other library
-  // copy of this episode matches on the item's guid instead.
   const pending: PendingWatch[] = getPendingWatches(input.rating_key, meta.guid || null)
 
   let recipients: MappingRow[] = triggerUsable ? [trigger!] : []
-  if (shared.length && triggerUsable && shared.some((r) => r.id === trigger!.id)) recipients = shared
-  // One-offs join the list, deduped: a profile already in the share must not be
-  // delivered to twice, and the pending row is still consumed either way.
+  if (shared.length && triggerUsable && shared.some((r) => r.id === trigger!.id)) recipients = [...shared]
   for (const p of pending) {
     if (!recipients.some((r) => r.id === p.mapping.id)) recipients.push(p.mapping)
   }
 
-  // Plex marking is opt-in per share, and a one-off INHERITS that rather than
-  // deciding for itself: the bridge must not start writing into other people's
-  // Plex libraries because somebody used a quick action.
   const share = recipients.length > 1 || pending.length ? getSharedTitle(key, guid) : undefined
-  const plex = share?.plex_sync ? await plexTargetFor(settings) : { target: null, error: null }
+  const plexFor = new Set<number>()
+  if (share?.plex_sync) for (const r of shared) plexFor.add(r.id)
+  for (const p of pending) if (p.plex_sync) plexFor.add(p.mapping.id)
+  const plex = plexFor.size ? await plexTargetFor(settings) : { target: null, error: null }
 
   let triggerResult: { ok: boolean; seenr_status?: number } | null = null
   let delivered = 0
@@ -237,34 +227,22 @@ export async function processEvent(
     // The trigger is excluded from Plex: they pressed play, so their copy is already
     // watched. Everything else about their delivery is unchanged.
     const isTrigger = !!trigger && rcpt.id === trigger.id
+    const wantsPlex = !isTrigger && plexFor.has(rcpt.id)
     const res = await deliverToMapping(meta, input.rating_key, input.action, rcpt, settings, now, {
       record,
-      plex: isTrigger ? null : plex.target,
-      plexError: isTrigger ? null : plex.error,
+      plex: wantsPlex ? plex.target : null,
+      plexError: wantsPlex ? plex.error : null,
     })
     if (res) delivered++
     if (isTrigger) triggerResult = res
   }
 
-  // Consumed once the deliveries for this watch are done, whatever their outcome:
-  // the intent was "count this item", the item has now been watched, and a row left
-  // behind would fire again on a rewatch weeks later. Gated on `record` too — that
-  // flag means "persist nothing about this run", and deleting a row is persisting
-  // something; it is the only irreversible side effect in this function.
   if (record && pending.length) deletePendingWatchesByIds(pending.map((p) => p.id))
 
   // Per-type sync could skip the trigger while still delivering to co-watchers.
-  // No trigger row is written when the person playing is unmapped or their mapping
-  // is off — but a one-off may still have delivered, so `ok` follows what happened,
-  // not who triggered it.
   if (!triggerResult) {
     if (!triggerUsable) {
       if (delivered === 0)
-        // Reachable when every pending recipient was itself declined by
-        // deliverToMapping's own gates (disabled, or per-type sync off) — the
-        // m.enabled filter on getPendingWatches only catches the disabled case,
-        // not sync-off. Without this, the one-off vanishes: no event row, no
-        // reason, nothing on the Dashboard to explain it.
         return skip('No profile could be counted for this watch', common)
       return { ok: true, fanout: delivered, ...common }
     }

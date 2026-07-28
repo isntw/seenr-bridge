@@ -794,7 +794,6 @@ describe('processEvent one-off pending watches', () => {
     expect(r.ok).toBe(true)
     expect(forwardToSeenr).toHaveBeenCalledTimes(2)
     expect(db.listEvents(10).map((row) => row.username).sort()).toEqual(['alice', 'bob'])
-    // Consumed: a rewatch next week must not silently fire again.
     expect(db.getPendingWatches('12345')).toHaveLength(0)
   })
 
@@ -803,7 +802,6 @@ describe('processEvent one-off pending watches', () => {
     const bob = db.upsertMapping('bob', 'tok-b', 1, 1, 1)
     db.addPendingWatches('12345', null, [bob.id])
 
-    // 'alice' is not mapped: today this returns before any lookup.
     const r = await pipeline.processEvent(input)
 
     expect(forwardToSeenr).toHaveBeenCalledOnce()
@@ -849,7 +847,6 @@ describe('processEvent one-off pending watches', () => {
     const { db, pipeline } = await configured()
     db.upsertMapping('alice', 'tok-a', 1, 1, 1)
     const bob = db.upsertMapping('bob', 'tok-b', 1, 1, 1)
-    // Pending was filed against a different key, same episode guid.
     db.addPendingWatches('99999', 'plex://episode/abc', [bob.id])
 
     await pipeline.processEvent(input) // fixture meta.guid === 'plex://episode/abc'
@@ -858,17 +855,16 @@ describe('processEvent one-off pending watches', () => {
     expect(db.getPendingWatches('99999', 'plex://episode/abc')).toHaveLength(0)
   })
 
-  it('marks Plex for a one-off only when the title share says so', async () => {
+  it('still marks Plex for a share member who also has a one-off queued', async () => {
     const { db, pipeline } = await configured()
     db.saveSettings({ plex_token: 'owner-tok' })
     const alice = db.upsertMapping('alice', 'tok-a', 1, 1, 1)
     const bob = db.upsertMapping('bob', 'tok-b', 1, 1, 1)
-    db.setSharedTitle({ rating_key: '999', media_type: 'show', plex_sync: 1 }, [alice.id])
-    db.addPendingWatches('12345', null, [bob.id])
+    db.setSharedTitle({ rating_key: '999', media_type: 'show', plex_sync: 1 }, [alice.id, bob.id])
+    db.addPendingWatches('12345', null, [bob.id], false)
 
     await pipeline.processEvent(input)
 
-    // Inherited from the show's share; bob is not the trigger, so he is written.
     expect(markWatched).toHaveBeenCalledOnce()
     expect(markWatched).toHaveBeenCalledWith('http://plex:32400', 'tok-bob', '12345')
   })
@@ -883,6 +879,45 @@ describe('processEvent one-off pending watches', () => {
     await pipeline.processEvent(input)
 
     expect(markWatched).not.toHaveBeenCalled()
+  })
+
+  it('marks Plex for a one-off that asked for it, with no share involved', async () => {
+    const { db, pipeline } = await configured()
+    db.saveSettings({ plex_token: 'owner-tok' })
+    db.upsertMapping('alice', 'tok-a', 1, 1, 1)
+    const bob = db.upsertMapping('bob', 'tok-b', 1, 1, 1)
+    db.addPendingWatches('12345', null, [bob.id], true)
+
+    await pipeline.processEvent(input)
+
+    expect(markWatched).toHaveBeenCalledOnce()
+    expect(markWatched).toHaveBeenCalledWith('http://plex:32400', 'tok-bob', '12345')
+  })
+
+  it('leaves Plex alone for a one-off that did not ask, even when the share says otherwise', async () => {
+    const { db, pipeline } = await configured()
+    db.saveSettings({ plex_token: 'owner-tok' })
+    const alice = db.upsertMapping('alice', 'tok-a', 1, 1, 1)
+    const bob = db.upsertMapping('bob', 'tok-b', 1, 1, 1)
+    db.setSharedTitle({ rating_key: '999', media_type: 'show', plex_sync: 1 }, [alice.id])
+    db.addPendingWatches('12345', null, [bob.id], false)
+
+    await pipeline.processEvent(input)
+
+    expect(markWatched).not.toHaveBeenCalled()
+  })
+
+  it('re-queueing the same profile updates its Plex answer rather than keeping the old one', async () => {
+    const { db, pipeline } = await configured()
+    db.saveSettings({ plex_token: 'owner-tok' })
+    db.upsertMapping('alice', 'tok-a', 1, 1, 1)
+    const bob = db.upsertMapping('bob', 'tok-b', 1, 1, 1)
+    db.addPendingWatches('12345', null, [bob.id], false)
+    expect(db.addPendingWatches('12345', null, [bob.id], true)).toBe(0)
+
+    await pipeline.processEvent(input)
+
+    expect(markWatched).toHaveBeenCalledOnce()
   })
 
   it('consumes nothing on a dry run, so Preview cannot burn a one-off', async () => {
@@ -909,11 +944,6 @@ describe('processEvent one-off pending watches', () => {
     expect(db.listEvents(10).map((row) => row.username)).toEqual(['alice'])
   })
 
-  // Fix round 1, item 1: line 220 gates recipients=[trigger] on triggerUsable, but
-  // the shared-title fold-in must gate on the SAME flag — a disabled trigger who
-  // happens to be one of the share's profiles must not pull the rest of the share
-  // in. Before the fix this delivered to carol too (and wrote her Plex) even though
-  // the one-off named only bob.
   it('does not fold in the whole share when a disabled trigger happens to be one of its profiles', async () => {
     const { db, pipeline } = await configured()
     db.saveSettings({ plex_token: 'owner-tok' })
@@ -925,17 +955,11 @@ describe('processEvent one-off pending watches', () => {
 
     await pipeline.processEvent(input) // alice (disabled) plays
 
-    // Only bob — the one-off — is delivered. Carol must not be swept in just
-    // because the disabled trigger happens to also be one of the share's profiles.
     expect(db.listEvents(10).map((row) => row.username)).toEqual(['bob'])
     expect(forwardToSeenr).toHaveBeenCalledTimes(1)
     expect(markWatched).not.toHaveBeenCalledWith(expect.anything(), 'tok-carol', expect.anything())
   })
 
-  // Fix round 1, item 2: a pending row can pass the gate (triggerUsable === false,
-  // pendingByKey non-empty) and still deliver to nobody, when its own mapping has
-  // per-type sync off. The m.enabled filter added to getPendingWatches (db.spec.ts)
-  // catches the disabled case; this covers the case it structurally cannot.
   it('records a reason instead of vanishing when the only pending recipient has sync off', async () => {
     const { db, pipeline } = await configured()
     const bob = db.upsertMapping('bob', 'tok-b', 1, 1, 0) // episode sync off
@@ -950,15 +974,10 @@ describe('processEvent one-off pending watches', () => {
     const rows = db.listEvents(10)
     expect(rows).toHaveLength(1)
     expect(rows[0]!.skipped).toBe(1)
-    // Still consumed: leaving it behind would mean it fires "successfully" on a
-    // later rewatch when the config hasn't changed, which is just as wrong.
     expect(db.getPendingWatches('12345')).toHaveLength(0)
   })
 
-  // Fix round 1, item 4: the earlier Plex-inheritance coverage only exercised a
-  // show. A movie's own rating_key IS the share key (no grandparent indirection),
-  // so this is the path that would break if titleKeyFor's movie branch regressed.
-  it('marks Plex for a one-off on a movie, inherited from the movie share', async () => {
+  it('marks Plex on a movie for a share member who also has a one-off queued', async () => {
     const { db, pipeline } = await configured()
     db.saveSettings({ plex_token: 'owner-tok' })
     db.upsertMapping('alice', 'tok-a', 1, 1, 1)

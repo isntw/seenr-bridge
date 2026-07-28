@@ -510,7 +510,6 @@ describe('pending watches', () => {
     const bob = db.upsertMapping('bob', 'tok-b', 1, 1, 1)
 
     expect(db.addPendingWatches('12345', 'plex://episode/abc', [alice.id, bob.id])).toBe(2)
-    // Clicking twice must not double-deliver.
     expect(db.addPendingWatches('12345', 'plex://episode/abc', [alice.id])).toBe(0)
 
     expect(db.getPendingWatches('12345').map((p) => p.mapping.username).sort()).toEqual(['alice', 'bob'])
@@ -521,7 +520,6 @@ describe('pending watches', () => {
     const alice = db.upsertMapping('alice', 'tok-a', 1, 1, 1)
     db.addPendingWatches('9815', 'plex://episode/abc', [alice.id])
 
-    // Same episode, other library copy: different key, identical guid.
     expect(db.getPendingWatches('9809', 'plex://episode/abc')).toHaveLength(1)
     expect(db.getPendingWatches('9809', null)).toHaveLength(0)
   })
@@ -540,7 +538,6 @@ describe('pending watches', () => {
     const db = await freshDb()
     const alice = db.upsertMapping('alice', 'tok-a', 1, 1, 1)
     db.addPendingWatches('12345', null, [alice.id])
-    // Age the row directly: an abandoned session leaves exactly this behind.
     db.useDb().prepare('UPDATE pending_watches SET created = ?').run(Date.now() - DAY - 1000)
 
     expect(db.getPendingWatches('12345')).toHaveLength(0)
@@ -562,6 +559,63 @@ describe('pending watches', () => {
     expect(db.getPendingWatches('12345')).toHaveLength(1)
   })
 
+  it('lists live one-offs with their usernames, skipping disabled and expired', async () => {
+    const db = await freshDb()
+    const alice = db.upsertMapping('alice', 'tok-a', 1, 1, 1)
+    const bob = db.upsertMapping('bob', 'tok-b', 1, 1, 1)
+    const carol = db.upsertMapping('carol', 'tok-c', 0, 1, 1) // disabled
+    db.addPendingWatches('12345', null, [alice.id, bob.id, carol.id])
+    db.addPendingWatches('500', null, [alice.id])
+    db.useDb().prepare('UPDATE pending_watches SET created = ? WHERE rating_key = ?')
+      .run(Date.now() - DAY - 1000, '500')
+
+    const out = db.listPendingWatches()
+
+    expect(out.map((p) => p.username)).toEqual(['alice', 'bob'])
+    expect(out.every((p) => p.rating_key === '12345')).toBe(true)
+    expect(out[0]).toMatchObject({ rating_key: '12345', mapping_id: alice.id, username: 'alice' })
+  })
+
+  it('round-trips the per-one-off Plex answer', async () => {
+    const db = await freshDb()
+    const alice = db.upsertMapping('alice', 'tok-a', 1, 1, 1)
+    const bob = db.upsertMapping('bob', 'tok-b', 1, 1, 1)
+    db.addPendingWatches('12345', null, [alice.id], false)
+    db.addPendingWatches('12345', null, [bob.id], true)
+
+    const rows = db.getPendingWatches('12345')
+    const by = (u: string) => rows.find((p) => p.mapping.username === u)!
+
+    expect(by('alice').plex_sync).toBe(false)
+    expect(by('bob').plex_sync).toBe(true)
+  })
+
+  it('un-queues only the named profiles for that item', async () => {
+    const db = await freshDb()
+    const alice = db.upsertMapping('alice', 'tok-a', 1, 1, 1)
+    const bob = db.upsertMapping('bob', 'tok-b', 1, 1, 1)
+    db.addPendingWatches('12345', null, [alice.id, bob.id], true)
+    db.addPendingWatches('500', null, [alice.id], false)
+
+    expect(db.deletePendingWatches('12345', [alice.id])).toBe(1)
+
+    expect(db.getPendingWatches('12345').map((p) => p.mapping.username)).toEqual(['bob'])
+    expect(db.getPendingWatches('500').map((p) => p.mapping.username)).toEqual(['alice'])
+    expect(db.deletePendingWatches('12345', [])).toBe(0)
+  })
+
+  it('reports the Plex answer in the listing, so the card can badge it', async () => {
+    const db = await freshDb()
+    const alice = db.upsertMapping('alice', 'tok-a', 1, 1, 1)
+    const bob = db.upsertMapping('bob', 'tok-b', 1, 1, 1)
+    db.addPendingWatches('12345', null, [alice.id], true)
+    db.addPendingWatches('12345', null, [bob.id], false)
+
+    const out = db.listPendingWatches()
+    expect(out.find((p) => p.username === 'alice')!.plex_sync).toBe(true)
+    expect(out.find((p) => p.username === 'bob')!.plex_sync).toBe(false)
+  })
+
   it('cascades when the mapping is deleted', async () => {
     const db = await freshDb()
     const alice = db.upsertMapping('alice', 'tok-a', 1, 1, 1)
@@ -578,8 +632,6 @@ describe('pending watches', () => {
     const bob = db.upsertMapping('bob', 'tok-b', 1, 1, 1)
     db.addPendingWatches('12345', null, [alice.id, bob.id])
 
-    // Disabled after the one-off was filed — the row itself is untouched, only the
-    // mapping is; the gate has to catch this at read time, not at write time.
     db.upsertMapping('bob', 'tok-b', 0, 1, 1)
 
     expect(db.getPendingWatches('12345').map((p) => p.mapping.username)).toEqual(['alice'])

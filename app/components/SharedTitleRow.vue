@@ -24,6 +24,7 @@ function assigned(mappings: Mapping[], profiles: number[]) {
     color="neutral"
     variant="ghost"
     size="xl"
+    class="p-3"
     :aria-label="`Edit ${row.title}`"
     @click="$emit('edit')"
   >

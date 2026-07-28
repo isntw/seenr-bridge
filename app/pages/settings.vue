@@ -300,6 +300,15 @@ const plexError = ref<string | null>(null)
 // bridge lost my account", the opposite of the truth. Reconnect and Disconnect drive
 // `plexBusy` instead, so a refetch never blinks the card back to a skeleton.
 const plexLoading = ref(true)
+const plexPopup = ref<PlexPopup | null>(null)
+let plexCancelled = false
+
+function cancelPlexSignIn() {
+  plexCancelled = true
+  plexPopup.value?.close()
+  plexPopup.value = null
+  plexBusy.value = false
+}
 
 async function loadPlexLink() {
   try {
@@ -351,7 +360,7 @@ async function signInWithPlex() {
     const pin = await $fetch<{ id: string; code: string; url: string }>('/api/plex/pin', {
       method: 'POST',
     })
-    window.open(pin.url, '_blank', 'noopener')
+    plexPopup.value = openPlexPopup(pin.url)
 
     // Poll to the deadline and no further. A blip mid-poll is skipped rather than
     // aborting the whole sign-in: the operator has already approved in Plex by then,
@@ -361,6 +370,8 @@ async function signInWithPlex() {
     let approved = false
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 2000))
+      if (plexCancelled) return
+
       try {
         const r = await $fetch<{ pending: boolean }>(`/api/plex/pin/${encodeURIComponent(pin.id)}`, {
           timeout: 10_000,
@@ -373,6 +384,10 @@ async function signInWithPlex() {
         // transient — try again until the deadline
       }
     }
+
+    // Close it for them either way: a popup left open on a spent PIN is just clutter.
+    plexPopup.value?.close()
+    plexPopup.value = null
 
     if (!approved) {
       plexError.value = 'Timed out waiting for Plex. Try again.'

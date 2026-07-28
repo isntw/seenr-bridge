@@ -294,12 +294,20 @@ async function toggleForwarding(v: boolean) {
 const plexLink = ref<PlexLinkStatus | null>(null)
 const plexBusy = ref(false)
 const plexError = ref<string | null>(null)
+// Only true until the FIRST read settles. Without it the section renders its
+// not-connected state while /api/plex/status is still in flight, so a connected
+// install flashes "Sign in with Plex" for a second or two — which reads as "the
+// bridge lost my account", the opposite of the truth. Reconnect and Disconnect drive
+// `plexBusy` instead, so a refetch never blinks the card back to a skeleton.
+const plexLoading = ref(true)
 
 async function loadPlexLink() {
   try {
     plexLink.value = await $fetch<PlexLinkStatus>('/api/plex/status')
   } catch (e) {
     plexError.value = apiErrorMessage(e, 'Could not read the Plex link status.')
+  } finally {
+    plexLoading.value = false
   }
 }
 
@@ -683,8 +691,29 @@ async function runTest(dryRun: boolean) {
     <SetupStep :n="3" title="Plex" badge="optional" hint="mark co-watched titles watched in Plex too">
       <UAlert v-if="plexError" color="error" variant="subtle" class="mb-3" :description="plexError" />
 
+      <!-- Shaped like the card below, not a generic bar, so the section does not jump
+           when the real thing arrives. -->
+      <div
+        v-if="plexLoading"
+        class="rounded-lg bg-elevated/40 p-3 ring-1 ring-default"
+        aria-hidden="true"
+      >
+        <div class="flex items-start gap-3">
+          <USkeleton class="size-9 shrink-0 rounded-md" />
+          <div class="min-w-0 flex-1 space-y-2">
+            <div class="flex items-center gap-2">
+              <USkeleton class="h-4 w-28" />
+              <USkeleton class="h-5 w-16" />
+            </div>
+            <USkeleton class="h-3 w-3/5" />
+            <USkeleton class="h-3 w-2/5" />
+          </div>
+          <USkeleton class="h-8 w-28 shrink-0" />
+        </div>
+      </div>
+
       <!-- Not connected: one sentence and the brand button, nothing else to look at. -->
-      <template v-if="!plexLink?.connected">
+      <template v-else-if="!plexLink?.connected">
         <p class="text-sm text-muted">
           Sign in once as the server owner. The bridge can then mark a shared title watched
           in each co-watcher's own Plex, not just in seenr.

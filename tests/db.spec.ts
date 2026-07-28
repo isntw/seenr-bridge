@@ -500,3 +500,84 @@ describe('plexLoginAvailable', () => {
     expect(db.plexLoginAvailable()).toBe(true)
   })
 })
+
+describe('pending watches', () => {
+  const DAY = 24 * 60 * 60 * 1000
+
+  it('adds one row per profile and is idempotent per (item, profile)', async () => {
+    const db = await freshDb()
+    const alice = db.upsertMapping('alice', 'tok-a', 1, 1, 1)
+    const bob = db.upsertMapping('bob', 'tok-b', 1, 1, 1)
+
+    expect(db.addPendingWatches('12345', 'plex://episode/abc', [alice.id, bob.id])).toBe(2)
+    // Clicking twice must not double-deliver.
+    expect(db.addPendingWatches('12345', 'plex://episode/abc', [alice.id])).toBe(0)
+
+    expect(db.getPendingWatches('12345').map((p) => p.mapping.username).sort()).toEqual(['alice', 'bob'])
+  })
+
+  it('matches on guid when the played copy has a different rating_key', async () => {
+    const db = await freshDb()
+    const alice = db.upsertMapping('alice', 'tok-a', 1, 1, 1)
+    db.addPendingWatches('9815', 'plex://episode/abc', [alice.id])
+
+    // Same episode, other library copy: different key, identical guid.
+    expect(db.getPendingWatches('9809', 'plex://episode/abc')).toHaveLength(1)
+    expect(db.getPendingWatches('9809', null)).toHaveLength(0)
+  })
+
+  it('never matches on an empty guid, which would collide across every item', async () => {
+    const db = await freshDb()
+    const alice = db.upsertMapping('alice', 'tok-a', 1, 1, 1)
+    db.addPendingWatches('111', null, [alice.id])
+
+    expect(db.getPendingWatches('222', '')).toHaveLength(0)
+    expect(db.getPendingWatches('222', null)).toHaveLength(0)
+    expect(db.getPendingWatches('111')).toHaveLength(1)
+  })
+
+  it('hides and sweeps rows older than 24h', async () => {
+    const db = await freshDb()
+    const alice = db.upsertMapping('alice', 'tok-a', 1, 1, 1)
+    db.addPendingWatches('12345', null, [alice.id])
+    // Age the row directly: an abandoned session leaves exactly this behind.
+    db.useDb().prepare('UPDATE pending_watches SET created = ?').run(Date.now() - DAY - 1000)
+
+    expect(db.getPendingWatches('12345')).toHaveLength(0)
+    expect(db.sweepPendingWatches()).toBe(1)
+    expect(db.sweepPendingWatches()).toBe(0)
+  })
+
+  it('deletes by id, so consuming a guid match removes the right row', async () => {
+    const db = await freshDb()
+    const alice = db.upsertMapping('alice', 'tok-a', 1, 1, 1)
+    const bob = db.upsertMapping('bob', 'tok-b', 1, 1, 1)
+    db.addPendingWatches('12345', null, [alice.id, bob.id])
+
+    const rows = db.getPendingWatches('12345')
+    db.deletePendingWatchesByIds([rows[0]!.id])
+
+    expect(db.getPendingWatches('12345')).toHaveLength(1)
+    db.deletePendingWatchesByIds([])
+    expect(db.getPendingWatches('12345')).toHaveLength(1)
+  })
+
+  it('cascades when the mapping is deleted', async () => {
+    const db = await freshDb()
+    const alice = db.upsertMapping('alice', 'tok-a', 1, 1, 1)
+    db.addPendingWatches('12345', null, [alice.id])
+
+    db.deleteMapping(alice.id)
+
+    expect(db.getPendingWatches('12345')).toHaveLength(0)
+  })
+
+  it('adds the table to a database created before it existed', async () => {
+    const db = await freshDb()
+    db.useDb().exec('DROP TABLE pending_watches')
+    db.closeDb()
+
+    const upgraded = await freshDb()
+    expect(() => upgraded.getPendingWatches('1')).not.toThrow()
+  })
+})

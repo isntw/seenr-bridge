@@ -23,6 +23,7 @@ export function useDb(): Database.Database {
 
   const db = new Database(path.join(dir, 'seenr-bridge.db'))
   db.pragma('journal_mode = WAL')
+  db.pragma('foreign_keys = ON')
 
   migrate(db)
 
@@ -125,6 +126,19 @@ CREATE TABLE IF NOT EXISTS shared_title_profiles (
   mapping_id INTEGER NOT NULL,
   PRIMARY KEY (rating_key, mapping_id)
 );
+
+CREATE TABLE IF NOT EXISTS pending_watches (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  -- The ITEM playing: this episode, or this film. Not the show — "count this
+  -- episode" means this one, and the watched event carries the episode's own key.
+  rating_key TEXT NOT NULL,
+  guid TEXT,
+  mapping_id INTEGER NOT NULL,
+  created INTEGER NOT NULL,
+  UNIQUE (rating_key, mapping_id),
+  FOREIGN KEY (mapping_id) REFERENCES mappings (id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_pending_rating_key ON pending_watches (rating_key);
 `)
 
   // Append-only column guards. Retained because the app still needs to
@@ -218,6 +232,21 @@ CREATE TABLE IF NOT EXISTS shared_title_profiles (
            OR error LIKE 'Library "%" is not selected in Settings'`,
     ).run()
   }
+
+  // A whole table rather than a column, so the guard is CREATE TABLE IF NOT EXISTS
+  // run unconditionally — cheap, and it needs no table_info probe.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS pending_watches (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      rating_key TEXT NOT NULL,
+      guid TEXT,
+      mapping_id INTEGER NOT NULL,
+      created INTEGER NOT NULL,
+      UNIQUE (rating_key, mapping_id),
+      FOREIGN KEY (mapping_id) REFERENCES mappings (id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_pending_rating_key ON pending_watches (rating_key);
+  `)
 }
 
 export interface SettingsRow {
@@ -573,6 +602,76 @@ export function getSharedTitle(rating_key: string, guid = ''): SharedTitleRow | 
         LIMIT 1`,
     )
     .get({ rating_key, guid }) as SharedTitleRow | undefined
+}
+
+export interface PendingWatchRow {
+  id: number
+  rating_key: string
+  guid: string | null
+  mapping_id: number
+  created: number
+}
+
+/** A pending one-off, joined to the profile it is for. `id` is carried so the
+ *  consumer can delete the exact row it used — which matters when the row was
+ *  matched by guid and its rating_key is not the key that was played. */
+export interface PendingWatch {
+  id: number
+  mapping: MappingRow
+}
+
+const PENDING_TTL_MS = 24 * 60 * 60 * 1000
+
+/** Rows older than the TTL are dropped. Swept on insert, the same way
+ *  insertEvent trims the events cap: an abandoned session leaves a row behind and
+ *  nothing else would ever come along to clear it. */
+export function sweepPendingWatches(): number {
+  return useDb()
+    .prepare('DELETE FROM pending_watches WHERE created <= ?')
+    .run(Date.now() - PENDING_TTL_MS).changes
+}
+
+export function addPendingWatches(
+  ratingKey: string,
+  guid: string | null,
+  mappingIds: number[],
+): number {
+  sweepPendingWatches()
+  const stmt = useDb().prepare(
+    `INSERT OR IGNORE INTO pending_watches (rating_key, guid, mapping_id, created)
+     VALUES (?, ?, ?, ?)`,
+  )
+  const now = Date.now()
+  let written = 0
+  const tx = useDb().transaction((ids: number[]) => {
+    for (const id of ids) written += stmt.run(ratingKey, guid || null, id, now).changes
+  })
+  tx(mappingIds)
+  return written
+}
+
+export function getPendingWatches(ratingKey: string, guid?: string | null): PendingWatch[] {
+  // An empty guid must never match: it is the "Tautulli did not tell us" value,
+  // and matching on it would make every pending row match every item.
+  const g = guid || null
+  const rows = useDb()
+    .prepare(
+      `SELECT p.id AS pending_id, m.*
+         FROM pending_watches p
+         JOIN mappings m ON m.id = p.mapping_id
+        WHERE p.created > ?
+          AND (p.rating_key = ? OR (? IS NOT NULL AND p.guid = ?))`,
+    )
+    .all(Date.now() - PENDING_TTL_MS, ratingKey, g, g) as (MappingRow & { pending_id: number })[]
+
+  return rows.map(({ pending_id, ...mapping }) => ({ id: pending_id, mapping: mapping as MappingRow }))
+}
+
+export function deletePendingWatchesByIds(ids: number[]): void {
+  if (!ids.length) return
+  useDb()
+    .prepare(`DELETE FROM pending_watches WHERE id IN (${ids.map(() => '?').join(',')})`)
+    .run(...ids)
 }
 
 const MAX_EVENTS = 1000

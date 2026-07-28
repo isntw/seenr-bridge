@@ -350,6 +350,66 @@ const matchedLabel = computed(() => {
   return `${l.matched.length} of ${total} users ready`
 })
 
+// The header's at-a-glance row: one pill per connection, chrome always neutral, a dot
+// inside carrying the state. Colouring the whole badge — what SetupSubsection does
+// further down, where a badge sits alone beside its own heading — turns a row of three
+// into a traffic light; neutral chrome keeps it one quiet strip that does not change
+// shape as things go green or red. The cost is that "Tautulli" alone cannot say whether
+// it is reachable, so the full sentence rides on title/aria-label.
+type StatusPill = {
+  key: string
+  label: string
+  color: 'success' | 'warning' | 'error' | 'neutral'
+  state: string
+}
+
+const tautulliPill = computed<StatusPill>(() => ({
+  key: 'tautulli',
+  label: 'Tautulli',
+  color: connStatus.value === 'pending' ? 'neutral' : connStatus.value === 'ok' ? 'success' : 'error',
+  state:
+    connStatus.value === 'pending'
+      ? 'Checking Tautulli…'
+      : connStatus.value === 'ok'
+        ? 'Tautulli connected'
+        : 'Tautulli unreachable',
+}))
+
+const webhookPill = computed<StatusPill>(() => ({
+  key: 'webhook',
+  label: 'Webhook',
+  color: hookStatus.value === 'pending' ? 'neutral' : hookStatus.value === 'ok' ? 'success' : 'error',
+  state:
+    hookStatus.value === 'pending'
+      ? 'Checking the webhook…'
+      : hookStatus.value === 'ok'
+        ? 'Webhook active in Tautulli'
+        : 'No webhook in Tautulli',
+}))
+
+const plexPill = computed<StatusPill>(() => {
+  const base = { key: 'plex', label: 'Plex' }
+  if (plexLoading.value) return { ...base, color: 'neutral', state: 'Checking Plex…' }
+  if (plexError.value) return { ...base, color: 'neutral', state: 'Plex status unavailable' }
+  const l = plexLink.value
+  // Plex is the optional step, so an unlinked install is neutral rather than an error —
+  // red would report a perfectly healthy bridge as broken.
+  if (!l?.connected) return { ...base, color: 'neutral', state: 'Plex not connected — optional' }
+  // `warning` mirrors the chip in step 3: linked, but some mapped users have no token,
+  // so their watches never reach Plex.
+  return {
+    ...base,
+    color: l.unmatched.length ? 'warning' : 'success',
+    state: `Plex connected — ${matchedLabel.value}`,
+  }
+})
+
+const statusPills = computed<StatusPill[]>(() => [
+  tautulliPill.value,
+  webhookPill.value,
+  plexPill.value,
+])
+
 // The PIN flow: create a PIN, open plex.tv in a new tab, then poll until the operator
 // approves it. The token is saved server-side by the poll endpoint and never comes back
 // to the browser.
@@ -446,41 +506,42 @@ async function runTest(dryRun: boolean) {
   <div v-else class="space-y-6">
     <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
       <h2 class="text-lg font-semibold text-highlighted">Setup</h2>
-      <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
-        <span class="flex items-center gap-1.5">
-          <UChip
-            standalone
-            inset
-            size="xs"
-            :color="connStatus === 'pending' ? 'neutral' : connStatus === 'ok' ? 'success' : 'error'"
-          />
-          <span class="text-muted">
-            {{ connStatus === 'pending' ? 'checking…' : connStatus === 'ok' ? 'Tautulli connected' : 'Tautulli unreachable' }}
-          </span>
-        </span>
-        <span class="text-dimmed">{{ status.users }} {{ status.users === 1 ? 'user' : 'users' }}</span>
-        <span class="flex items-center gap-1.5">
-          <UChip
-            standalone
-            inset
-            size="xs"
-            :color="hookStatus === 'pending' ? 'neutral' : hookStatus === 'ok' ? 'success' : 'error'"
-          />
-          <span class="text-muted">
-            {{ hookStatus === 'pending' ? 'checking…' : hookStatus === 'ok' ? 'webhook active' : 'no webhook' }}
-          </span>
-        </span>
-        <!-- "Syncing", not "Forwarding": this is the master switch and it gates the Plex
-             writes as well, so naming it after one of the two destinations understated
-             it. The column stays `forward_enabled` — renaming it would be a migration
-             for no behavioural gain. -->
-        <USwitch
-          label="Syncing"
-          :model-value="store.settings.forward_enabled"
-          :disabled="forwardingBusy"
-          :title="store.settings.forward_enabled ? 'Nothing is sent to seenr or Plex while this is off' : 'Off — nothing is sent to seenr or Plex'"
-          @update:model-value="(v) => toggleForwarding(v === true)"
-        />
+      <!-- "Syncing", not "Forwarding": this is the master switch and it gates the Plex
+           writes as well, so naming it after one of the two destinations understated
+           it. The column stays `forward_enabled` — renaming it would be a migration
+           for no behavioural gain.
+           Ordered out of DOM sequence on purpose: on a phone the switch belongs next to
+           the heading — it is the one control here, and pushing it below the pills buried
+           it — while the pills take a full-width second row. From `sm` up all three fit
+           one line, so the order flips back to pills-then-switch at the right edge. -->
+      <USwitch
+        label="Syncing"
+        class="order-1 sm:order-2"
+        :model-value="store.settings.forward_enabled"
+        :disabled="forwardingBusy"
+        :title="store.settings.forward_enabled ? 'Nothing is sent to seenr or Plex while this is off' : 'Off — nothing is sent to seenr or Plex'"
+        @update:model-value="(v) => toggleForwarding(v === true)"
+      />
+      <!-- The pills keep a tighter gap than the row itself, so they read as one group
+           and the switch beside them stays a separate control rather than a fifth pill. -->
+      <div class="order-2 flex w-full flex-wrap items-center gap-2 sm:order-1 sm:ms-auto sm:w-auto">
+        <UBadge
+          v-for="pill in statusPills"
+          :key="pill.key"
+          color="neutral"
+          variant="subtle"
+          size="sm"
+          :title="pill.state"
+          :aria-label="pill.state"
+        >
+          <UChip standalone inset size="xs" :color="pill.color" />
+          {{ pill.label }}
+        </UBadge>
+        <!-- A count, not a state, so it gets no dot — the pill is here only to keep the
+             group one row of pills instead of pills plus a stray line of text. -->
+        <UBadge color="neutral" variant="subtle" size="sm">
+          {{ status.users }} {{ status.users === 1 ? 'user' : 'users' }}
+        </UBadge>
       </div>
     </div>
 
@@ -715,7 +776,7 @@ async function runTest(dryRun: boolean) {
         class="rounded-lg bg-elevated/40 p-3 ring-1 ring-default"
         aria-hidden="true"
       >
-        <div class="flex items-start gap-3">
+        <div class="flex flex-wrap items-start gap-x-3 gap-y-2">
           <USkeleton class="size-9 shrink-0 rounded-md" />
           <div class="min-w-0 flex-1 space-y-2">
             <div class="flex items-center gap-2">
@@ -725,7 +786,11 @@ async function runTest(dryRun: boolean) {
             <USkeleton class="h-3 w-3/5" />
             <USkeleton class="h-3 w-2/5" />
           </div>
-          <USkeleton class="h-8 w-28 shrink-0" />
+          <!-- Wraps below on a phone exactly like the real buttons do, or the card would
+               still jump — the whole point of shaping the skeleton after it. -->
+          <div class="flex w-full justify-end sm:w-auto">
+            <USkeleton class="h-8 w-28" />
+          </div>
         </div>
       </div>
 
@@ -747,7 +812,7 @@ async function runTest(dryRun: boolean) {
            actually predicts whether a watch will land — which users are reachable. -->
       <template v-else>
         <div class="rounded-lg bg-elevated/40 p-3 ring-1 ring-default">
-          <div class="flex flex-wrap items-start gap-3">
+          <div class="flex flex-wrap items-start gap-x-3 gap-y-2">
             <span
               class="grid size-9 shrink-0 place-items-center rounded-md bg-[#EBAF00]/10 text-[#EBAF00] ring-1 ring-[#EBAF00]/30"
             >
@@ -795,7 +860,11 @@ async function runTest(dryRun: boolean) {
               </p>
             </div>
 
-            <div class="flex shrink-0 items-center gap-1">
+            <!-- Full width on a phone so the buttons take their own row: kept beside the
+                 details they squeezed the column to about a third of the card, which
+                 truncated the account and the server URL and broke the sentence below
+                 them over three lines. From `sm` up there is room for both. -->
+            <div class="flex w-full shrink-0 items-center justify-end gap-1 sm:w-auto">
               <UButton
                 color="neutral"
                 variant="ghost"

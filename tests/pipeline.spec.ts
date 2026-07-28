@@ -781,3 +781,131 @@ describe('processEvent share matching across library copies', () => {
     expect(forwardToSeenr).toHaveBeenCalledTimes(2)
   })
 })
+
+describe('processEvent one-off pending watches', () => {
+  it('delivers to a pending profile and deletes the row', async () => {
+    const { db, pipeline } = await configured()
+    db.upsertMapping('alice', 'tok-a', 1, 1, 1)
+    const bob = db.upsertMapping('bob', 'tok-b', 1, 1, 1)
+    db.addPendingWatches('12345', null, [bob.id]) // '12345' is the fixture episode
+
+    const r = await pipeline.processEvent(input) // alice plays it
+
+    expect(r.ok).toBe(true)
+    expect(forwardToSeenr).toHaveBeenCalledTimes(2)
+    expect(db.listEvents(10).map((row) => row.username).sort()).toEqual(['alice', 'bob'])
+    // Consumed: a rewatch next week must not silently fire again.
+    expect(db.getPendingWatches('12345')).toHaveLength(0)
+  })
+
+  it('fires even when the person playing has no mapping at all', async () => {
+    const { db, pipeline } = await configured()
+    const bob = db.upsertMapping('bob', 'tok-b', 1, 1, 1)
+    db.addPendingWatches('12345', null, [bob.id])
+
+    // 'alice' is not mapped: today this returns before any lookup.
+    const r = await pipeline.processEvent(input)
+
+    expect(forwardToSeenr).toHaveBeenCalledOnce()
+    expect(db.listEvents(10).map((row) => row.username)).toEqual(['bob'])
+    expect(r.fanout).toBe(1)
+  })
+
+  it('still returns silently for an unmapped user with nothing pending', async () => {
+    const { db, pipeline } = await configured()
+    const r = await pipeline.processEvent(input)
+
+    expect(r.skipped).toBe(true)
+    expect(r.reason).toContain('No seenr mapping')
+    expect(forwardToSeenr).not.toHaveBeenCalled()
+    expect(db.listEvents(10)).toHaveLength(0)
+  })
+
+  it('fires when the trigger mapping is disabled — the one-off is about other people', async () => {
+    const { db, pipeline } = await configured()
+    db.upsertMapping('alice', 'tok-a', 0, 1, 1) // disabled
+    const bob = db.upsertMapping('bob', 'tok-b', 1, 1, 1)
+    db.addPendingWatches('12345', null, [bob.id])
+
+    await pipeline.processEvent(input)
+
+    expect(db.listEvents(10).map((row) => row.username)).toEqual(['bob'])
+  })
+
+  it('does not double-deliver to a profile already in the share', async () => {
+    const { db, pipeline } = await configured()
+    const alice = db.upsertMapping('alice', 'tok-a', 1, 1, 1)
+    const bob = db.upsertMapping('bob', 'tok-b', 1, 1, 1)
+    db.setSharedTitle({ rating_key: '999', media_type: 'show' }, [alice.id, bob.id])
+    db.addPendingWatches('12345', null, [bob.id])
+
+    const r = await pipeline.processEvent(input)
+
+    expect(r.fanout).toBe(2)
+    expect(forwardToSeenr).toHaveBeenCalledTimes(2)
+  })
+
+  it('matches a pending row by guid when the other library copy is played', async () => {
+    const { db, pipeline } = await configured()
+    db.upsertMapping('alice', 'tok-a', 1, 1, 1)
+    const bob = db.upsertMapping('bob', 'tok-b', 1, 1, 1)
+    // Pending was filed against a different key, same episode guid.
+    db.addPendingWatches('99999', 'plex://episode/abc', [bob.id])
+
+    await pipeline.processEvent(input) // fixture meta.guid === 'plex://episode/abc'
+
+    expect(db.listEvents(10).map((row) => row.username).sort()).toEqual(['alice', 'bob'])
+    expect(db.getPendingWatches('99999', 'plex://episode/abc')).toHaveLength(0)
+  })
+
+  it('marks Plex for a one-off only when the title share says so', async () => {
+    const { db, pipeline } = await configured()
+    db.saveSettings({ plex_token: 'owner-tok' })
+    const alice = db.upsertMapping('alice', 'tok-a', 1, 1, 1)
+    const bob = db.upsertMapping('bob', 'tok-b', 1, 1, 1)
+    db.setSharedTitle({ rating_key: '999', media_type: 'show', plex_sync: 1 }, [alice.id])
+    db.addPendingWatches('12345', null, [bob.id])
+
+    await pipeline.processEvent(input)
+
+    // Inherited from the show's share; bob is not the trigger, so he is written.
+    expect(markWatched).toHaveBeenCalledOnce()
+    expect(markWatched).toHaveBeenCalledWith('http://plex:32400', 'tok-bob', '12345')
+  })
+
+  it('leaves Plex alone for a one-off on an unshared title', async () => {
+    const { db, pipeline } = await configured()
+    db.saveSettings({ plex_token: 'owner-tok' })
+    db.upsertMapping('alice', 'tok-a', 1, 1, 1)
+    const bob = db.upsertMapping('bob', 'tok-b', 1, 1, 1)
+    db.addPendingWatches('12345', null, [bob.id])
+
+    await pipeline.processEvent(input)
+
+    expect(markWatched).not.toHaveBeenCalled()
+  })
+
+  it('consumes nothing on a dry run, so Preview cannot burn a one-off', async () => {
+    const { db, pipeline } = await configured()
+    db.upsertMapping('alice', 'tok-a', 1, 1, 1)
+    const bob = db.upsertMapping('bob', 'tok-b', 1, 1, 1)
+    db.addPendingWatches('12345', null, [bob.id])
+
+    await pipeline.processEvent(input, { dryRun: true, record: false })
+
+    expect(forwardToSeenr).not.toHaveBeenCalled()
+    expect(db.getPendingWatches('12345')).toHaveLength(1)
+  })
+
+  it('does not consume an expired row', async () => {
+    const { db, pipeline } = await configured()
+    db.upsertMapping('alice', 'tok-a', 1, 1, 1)
+    const bob = db.upsertMapping('bob', 'tok-b', 1, 1, 1)
+    db.addPendingWatches('12345', null, [bob.id])
+    db.useDb().prepare('UPDATE pending_watches SET created = ?').run(Date.now() - 25 * 60 * 60 * 1000)
+
+    await pipeline.processEvent(input)
+
+    expect(db.listEvents(10).map((row) => row.username)).toEqual(['alice'])
+  })
+})

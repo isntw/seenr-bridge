@@ -1,7 +1,7 @@
 import {
   getSettings, getMappingByUsername, getSharedRecipients, getSharedTitle, listSharedTitles, insertEvent,
-  parseLibraries,
-  type MappingRow, type SettingsRow,
+  parseLibraries, getPendingWatches, deletePendingWatchesByIds,
+  type MappingRow, type SettingsRow, type PendingWatch,
 } from './db'
 import { getMetadata, getWatchedEpisodeKeys } from './tautulli'
 import { buildPayload } from './scrobble'
@@ -161,10 +161,20 @@ export async function processEvent(
     return fail('Tautulli connection not configured')
 
   const trigger = getMappingByUsername(input.username)
-  if (!trigger)
-    return { ok: false, skipped: true, reason: `No seenr mapping for user "${input.username}"` }
-  if (!trigger.enabled)
+
+  // Pending one-offs are consulted BEFORE the unmapped-user return below, and this
+  // is the reason the query takes only the rating_key: it runs on a path that used
+  // to cost nothing, so it has to stay one indexed SELECT with no Tautulli call.
+  // Without it, "a guest account is playing something, count it for me" — the case
+  // the Now playing card exists for — would silently do nothing.
+  const pendingByKey = getPendingWatches(input.rating_key)
+
+  const triggerUsable = !!trigger && !!trigger.enabled
+  if (!triggerUsable && !pendingByKey.length) {
+    if (!trigger)
+      return { ok: false, skipped: true, reason: `No seenr mapping for user "${input.username}"` }
     return { ok: false, skipped: true, reason: `Mapping for "${input.username}" is disabled` }
+  }
 
   let meta: TautulliMetadata
   try {
@@ -201,12 +211,24 @@ export async function processEvent(
   const key = titleKeyFor(meta, input.rating_key)
   const guid = titleGuidFor(meta)
   const shared = getSharedRecipients(key, guid)
-  let recipients: MappingRow[] = [trigger]
-  if (shared.length && shared.some((r) => r.id === trigger.id)) recipients = shared
 
-  // Plex marking is opt-in per share. Only asked about when there is somebody other
-  // than the trigger to write for, so an ordinary solo watch costs no extra calls.
-  const share = recipients.length > 1 ? getSharedTitle(key, guid) : undefined
+  // Queried a second time, now that metadata is in hand: the first pass could only
+  // match the exact rating_key, and a pending row filed against the other library
+  // copy of this episode matches on the item's guid instead.
+  const pending: PendingWatch[] = getPendingWatches(input.rating_key, meta.guid || null)
+
+  let recipients: MappingRow[] = triggerUsable ? [trigger!] : []
+  if (shared.length && trigger && shared.some((r) => r.id === trigger.id)) recipients = shared
+  // One-offs join the list, deduped: a profile already in the share must not be
+  // delivered to twice, and the pending row is still consumed either way.
+  for (const p of pending) {
+    if (!recipients.some((r) => r.id === p.mapping.id)) recipients.push(p.mapping)
+  }
+
+  // Plex marking is opt-in per share, and a one-off INHERITS that rather than
+  // deciding for itself: the bridge must not start writing into other people's
+  // Plex libraries because somebody used a quick action.
+  const share = recipients.length > 1 || pending.length ? getSharedTitle(key, guid) : undefined
   const plex = share?.plex_sync ? await plexTargetFor(settings) : { target: null, error: null }
 
   let triggerResult: { ok: boolean; seenr_status?: number } | null = null
@@ -214,7 +236,7 @@ export async function processEvent(
   for (const rcpt of recipients) {
     // The trigger is excluded from Plex: they pressed play, so their copy is already
     // watched. Everything else about their delivery is unchanged.
-    const isTrigger = rcpt.id === trigger.id
+    const isTrigger = !!trigger && rcpt.id === trigger.id
     const res = await deliverToMapping(meta, input.rating_key, input.action, rcpt, settings, now, {
       record,
       plex: isTrigger ? null : plex.target,
@@ -224,10 +246,20 @@ export async function processEvent(
     if (isTrigger) triggerResult = res
   }
 
+  // Consumed once the deliveries for this watch are done, whatever their outcome:
+  // the intent was "count this item", the item has now been watched, and a row left
+  // behind would fire again on a rewatch weeks later.
+  if (pending.length) deletePendingWatchesByIds(pending.map((p) => p.id))
+
   // Per-type sync could skip the trigger while still delivering to co-watchers.
+  // No trigger row is written when the person playing is unmapped or their mapping
+  // is off — but a one-off may still have delivered, so `ok` follows what happened,
+  // not who triggered it.
   if (!triggerResult) {
+    if (!triggerUsable)
+      return { ok: delivered > 0, skipped: delivered === 0, fanout: delivered, ...common }
     const why = meta.media_type === 'movie' ? 'Movie sync is off' : meta.media_type === 'episode' ? 'Episode sync is off' : 'Skipped'
-    return { ok: delivered > 0, skipped: delivered === 0, reason: `${why} for ${trigger.username}`, fanout: delivered, ...common }
+    return { ok: delivered > 0, skipped: delivered === 0, reason: `${why} for ${trigger!.username}`, fanout: delivered, ...common }
   }
   return { ok: triggerResult.ok, seenr_status: triggerResult.seenr_status, fanout: delivered, ...common }
 }

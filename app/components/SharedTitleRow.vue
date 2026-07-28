@@ -9,6 +9,10 @@ defineProps<{
 
 defineEmits<{ edit: [] }>()
 
+// One string for both instances of the badge — the mobile one and the column one — so
+// they cannot drift apart.
+const PLEX_TITLE = "Also marked watched in each co-watcher's own Plex"
+
 function assigned(mappings: Mapping[], profiles: number[]) {
   return mappings.filter((m) => profiles.includes(m.id))
 }
@@ -36,31 +40,16 @@ function assigned(mappings: Mapping[], profiles: number[]) {
       <div class="flex flex-wrap items-center gap-2">
         <span class="min-w-0 truncate text-sm font-medium text-highlighted">{{ row.title }}</span>
         <span v-if="row.year" class="text-xs text-dimmed">{{ row.year }}</span>
-        <UBadge
-          :color="row.isShow ? 'primary' : 'info'"
-          variant="subtle"
-          size="sm"
-          :label="row.isShow ? 'show' : 'movie'"
-        />
-        <!-- Plex's own gold rather than a theme colour, matching the sign-in button:
-             this badge means "writes outside the bridge", so it should not blend in
-             with the show/movie and profile badges around it. -->
-        <UBadge
-          v-if="row.plex_sync"
-          variant="subtle"
-          size="sm"
-          class="bg-[#EBAF00]/10 text-[#EBAF00] ring-[#EBAF00]/30"
-          title="Also marked watched in each co-watcher's own Plex"
-        >
-          <svg viewBox="0 0 32 32" class="size-3 shrink-0" aria-hidden="true">
-            <path fill="currentColor" d="M15.527 0H6.24l10.239 16L6.24 32h9.287L25.76 16z" />
-          </svg>
-          Plex
-        </UBadge>
+        <!-- The right-hand Plex column is hidden on a phone, so the badge rides here
+             instead — the same swap EventRow does with its status badge. -->
+        <PlexBadge v-if="row.plex_sync" class="sm:hidden" :title="PLEX_TITLE" />
       </div>
 
-      <div v-if="row.library_name" class="mt-1 truncate text-xs text-dimmed">
-        {{ row.library_name }}
+      <!-- Kind and library are both metadata, so they read as one dimmed line rather than
+           a badge plus a line of text. As a badge, `show` took the primary colour and so
+           looked like one of the profile names directly underneath it. -->
+      <div class="mt-1 truncate text-xs text-dimmed">
+        {{ row.isShow ? 'show' : 'movie' }}<template v-if="row.library_name"> · {{ row.library_name }}</template>
       </div>
 
       <div class="mt-2 flex flex-wrap gap-1.5">
@@ -77,6 +66,13 @@ function assigned(mappings: Mapping[], profiles: number[]) {
           No profiles assigned — nothing is being co-watched.
         </span>
       </div>
+    </div>
+
+    <!-- Its own column from `sm` up, so the one badge that reports behaviour rather than
+         metadata lands at the same place on every row instead of trailing a title of
+         whatever length. `items-start` keeps it on the title's line. -->
+    <div class="hidden shrink-0 items-start sm:flex">
+      <PlexBadge v-if="row.plex_sync" :title="PLEX_TITLE" />
     </div>
 
     <UIcon name="i-lucide-chevron-right" class="size-4 shrink-0 text-dimmed" />

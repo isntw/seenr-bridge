@@ -23,10 +23,12 @@ The rest is what the web UI talks to.
 | GET | `/api/tautulli/users` | Plex usernames for the mapping picker |
 | GET | `/api/tautulli/library` | browse shows/movies (`?type=&search=&start=&length=`) |
 | GET | `/api/tautulli/children` | seasons or episodes of a `rating_key` |
+| GET | `/api/tautulli/activity` | live Tautulli sessions |
 | POST | `/api/tautulli/sync-webhook` | create/update the Tautulli webhook |
 | GET | `/api/events` | recent scrobbles (`?limit=`) |
 | GET | `/api/stats` | dashboard counts |
 | GET | `/api/image` | poster art, proxied via Tautulli |
+| POST | `/api/pending` | record a one-off watch for multiple profiles |
 | POST | `/api/test` | build (`dryRun`) or send a test scrobble |
 
 Anything under `/api/` that doesn't match a route returns a JSON 404 rather than
@@ -48,3 +50,18 @@ Content-Type: application/json
 It replies **202 immediately** and processes afterwards, so a failure never shows
 up as an HTTP error — it lands as a row on the Dashboard instead. Debug forwarding
 problems there, not by reading response codes.
+
+## Live activity and one-off watches
+
+### `GET /api/tautulli/activity`
+
+Live Tautulli sessions, as `ActivitySession[]`. `[]` when nothing is playing, when
+Tautulli is not configured, and when Tautulli cannot be reached — the Dashboard
+treats all three the same, by not rendering the Now playing card.
+
+### `POST /api/pending`
+
+Body: `{ rating_key: string, guid?: string, mapping_ids: number[] }`.
+Records a one-off: when that item's `watched` event arrives, it is also counted for
+those profiles, then the record is deleted. Rows expire after 24h. Returns
+`{ added: number }`; adding the same profile twice adds nothing.

@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { VERSION } from '../../shared/version'
-
 const auth = useAuthStore()
 const status = useStatusStore()
 const drawer = ref(false)
@@ -34,18 +32,7 @@ onBeforeUnmount(() => status.stop())
         <AppNav />
       </div>
       <div class="mt-auto p-3">
-        <div class="mb-2.5 text-center text-[11px] text-dimmed">v{{ VERSION }}</div>
-        <div class="flex items-center gap-2 rounded-lg bg-elevated px-3 py-2.5">
-          <UChip
-            standalone
-            inset
-            size="xs"
-            :color="status.tautulli === null ? 'neutral' : status.tautulli.ok ? 'success' : 'error'"
-          />
-          <span class="truncate text-xs text-muted">
-            {{ status.tautulli === null ? 'Checking Tautulli…' : status.tautulli.ok ? 'Tautulli connected' : 'Tautulli unreachable' }}
-          </span>
-        </div>
+        <AppNavFooter />
       </div>
     </aside>
 
@@ -57,7 +44,12 @@ onBeforeUnmount(() => status.stop())
     >
       <template #body>
         <AppNav />
-        <div class="mt-4 text-[11px] text-dimmed">v{{ VERSION }}</div>
+      </template>
+      <!-- The footer slot, not the end of the body: the slideover is full height, so a
+           version line after the nav items floats in the middle of an empty panel
+           instead of sitting at the bottom where the rail puts it. -->
+      <template #footer>
+        <AppNavFooter class="w-full" />
       </template>
     </USlideover>
 

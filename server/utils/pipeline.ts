@@ -218,7 +218,7 @@ export async function processEvent(
   const pending: PendingWatch[] = getPendingWatches(input.rating_key, meta.guid || null)
 
   let recipients: MappingRow[] = triggerUsable ? [trigger!] : []
-  if (shared.length && trigger && shared.some((r) => r.id === trigger.id)) recipients = shared
+  if (shared.length && triggerUsable && shared.some((r) => r.id === trigger!.id)) recipients = shared
   // One-offs join the list, deduped: a profile already in the share must not be
   // delivered to twice, and the pending row is still consumed either way.
   for (const p of pending) {
@@ -248,16 +248,26 @@ export async function processEvent(
 
   // Consumed once the deliveries for this watch are done, whatever their outcome:
   // the intent was "count this item", the item has now been watched, and a row left
-  // behind would fire again on a rewatch weeks later.
-  if (pending.length) deletePendingWatchesByIds(pending.map((p) => p.id))
+  // behind would fire again on a rewatch weeks later. Gated on `record` too — that
+  // flag means "persist nothing about this run", and deleting a row is persisting
+  // something; it is the only irreversible side effect in this function.
+  if (record && pending.length) deletePendingWatchesByIds(pending.map((p) => p.id))
 
   // Per-type sync could skip the trigger while still delivering to co-watchers.
   // No trigger row is written when the person playing is unmapped or their mapping
   // is off — but a one-off may still have delivered, so `ok` follows what happened,
   // not who triggered it.
   if (!triggerResult) {
-    if (!triggerUsable)
-      return { ok: delivered > 0, skipped: delivered === 0, fanout: delivered, ...common }
+    if (!triggerUsable) {
+      if (delivered === 0)
+        // Reachable when every pending recipient was itself declined by
+        // deliverToMapping's own gates (disabled, or per-type sync off) — the
+        // m.enabled filter on getPendingWatches only catches the disabled case,
+        // not sync-off. Without this, the one-off vanishes: no event row, no
+        // reason, nothing on the Dashboard to explain it.
+        return skip('No profile could be counted for this watch', common)
+      return { ok: true, fanout: delivered, ...common }
+    }
     const why = meta.media_type === 'movie' ? 'Movie sync is off' : meta.media_type === 'episode' ? 'Episode sync is off' : 'Skipped'
     return { ok: delivered > 0, skipped: delivered === 0, reason: `${why} for ${trigger!.username}`, fanout: delivered, ...common }
   }

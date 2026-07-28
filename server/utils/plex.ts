@@ -143,16 +143,29 @@ export async function getPlexResource(
   }
 }
 
-/** The username of the account a token belongs to. Needed because the OWNER never
- *  appears in shared_servers — you do not share a server with yourself — so without
- *  this the owner is indistinguishable from a user who has no token at all. */
-export async function getPlexAccount(ownerToken: string): Promise<{ username: string }> {
+export interface PlexAccount {
+  /** plex.tv's numeric account id, as a string. The stable identity: a holder can
+   *  change their username and email, so anything matching on those would follow a
+   *  rename to a different person. */
+  id: string
+  username: string
+  thumb: string
+}
+
+/** Who a token belongs to. Two callers, two reasons: token resolution needs it because
+ *  the OWNER never appears in shared_servers (you do not share a server with yourself),
+ *  and Plex sign-in needs the id to find which bridge user may be signed in as. */
+export async function getPlexAccount(ownerToken: string): Promise<PlexAccount> {
   const res = await fetch(`${PLEX_TV}/api/v2/user`, {
     headers: { accept: 'application/json', 'X-Plex-Token': ownerToken },
   })
   if (!res.ok) throw new Error(`plex.tv HTTP ${res.status}`)
-  const u = (await res.json()) as { username?: string }
-  return { username: String(u?.username ?? '') }
+  const u = (await res.json()) as { id?: number | string; username?: string; thumb?: string }
+  return {
+    id: u?.id != null ? String(u.id) : '',
+    username: String(u?.username ?? ''),
+    thumb: String(u?.thumb ?? ''),
+  }
 }
 
 // Discovered tokens are cached IN MEMORY and never written to SQLite: they are other

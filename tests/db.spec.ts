@@ -368,3 +368,70 @@ describe('plex columns', () => {
     expect(db.eventToWire(row).plex_status).toBe(200)
   })
 })
+
+describe('Plex sign-in identity', () => {
+  it('creates the first account from a Plex identity with NO password', async () => {
+    const db = await freshDb()
+    const u = db.createUserFromPlex('isntw', { id: '9566164', username: 'isntw', thumb: 'http://t/a' })
+
+    expect(u.username).toBe('isntw')
+    expect(u.plex_id).toBe('9566164')
+    expect(u.plex_thumb).toBe('http://t/a')
+    // The empty hash is the mechanism, not a placeholder: verifyPassword() cannot match
+    // it, so password sign-in stays closed until one is set.
+    expect(u.password_hash).toBe('')
+  })
+
+  it('records the Plex account on an existing password account without touching it', async () => {
+    const db = await freshDb()
+    const u = db.createUser('iustin.monea', 'salt:hash')
+    db.recordPlexAccount(u.id, { id: '9566164', username: 'isntw', thumb: 'http://t/a' })
+
+    const after = db.firstUser()!
+    expect(after.plex_id).toBe('9566164')
+    expect(after.plex_username).toBe('isntw')
+    // The password is untouched — recording is not a credential change.
+    expect(after.password_hash).toBe('salt:hash')
+  })
+
+  it('firstUser is the single admin account', async () => {
+    const db = await freshDb()
+    expect(db.firstUser()).toBeUndefined()
+    db.createUser('iustin.monea', 'salt:hash')
+    expect(db.firstUser()!.username).toBe('iustin.monea')
+  })
+})
+
+describe('plexLoginAvailable', () => {
+  it('is true on a fresh install, where Plex sign-in creates the account', async () => {
+    const db = await freshDb()
+    expect(db.countUsers()).toBe(0)
+    expect(db.plexLoginAvailable()).toBe(true)
+  })
+
+  it('is false once an account exists but Tautulli is not configured', async () => {
+    const db = await freshDb()
+    db.createUser('iustin.monea', 'salt:hash')
+    // Without Tautulli the bridge cannot learn which server's owner to accept, so the
+    // login page must not offer a button that can only fail.
+    expect(db.plexLoginAvailable()).toBe(false)
+  })
+
+  it('is true once an account exists AND Tautulli is configured', async () => {
+    const db = await freshDb()
+    db.createUser('iustin.monea', 'salt:hash')
+    db.saveSettings({ tautulli_url: 'http://taut:8181', tautulli_apikey: 'key' })
+    expect(db.plexLoginAvailable()).toBe(true)
+  })
+
+  it('does not depend on a recorded Plex account', async () => {
+    const db = await freshDb()
+    const u = db.createUser('iustin.monea', 'salt:hash')
+    db.saveSettings({ tautulli_url: 'http://taut:8181', tautulli_apikey: 'key' })
+    // Availability is about ownership being checkable, not about any stored link —
+    // that is the whole point of authorising by role instead of by a binding.
+    expect(db.plexLoginAvailable()).toBe(true)
+    db.recordPlexAccount(u.id, { id: '1', username: 'x', thumb: '' })
+    expect(db.plexLoginAvailable()).toBe(true)
+  })
+})

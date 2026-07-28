@@ -770,7 +770,13 @@ async function runTest(dryRun: boolean) {
                    it means every write will fail, which deserves a real warning. -->
               <p v-if="plexLink.server?.owned === false" class="mt-1 text-xs text-warning">
                 This account does not own {{ plexLink.server?.name || 'this server' }} — it
-                cannot change anyone's watched state on it.
+                cannot change anyone's watched state on it, and cannot sign in here.
+              </p>
+              <!-- Owning the server is also what authorises Plex sign-in, so say so here
+                   rather than making it a separate setting to find. -->
+              <p v-else-if="plexLink.server?.owned" class="mt-1 flex items-center gap-1.5 text-xs text-dimmed">
+                <UIcon name="i-lucide-key-round" class="size-3 shrink-0" />
+                This account can also sign in to the bridge.
               </p>
             </div>
 

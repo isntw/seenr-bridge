@@ -74,7 +74,7 @@ onBeforeUnmount(() => status.stop())
           />
           <h1 class="truncate text-base font-semibold text-highlighted">{{ title }}</h1>
         </div>
-        <AccountMenu :username="auth.username" @logout="auth.logout" />
+        <AccountMenu :username="auth.username" :has-password="auth.hasPassword" @logout="auth.logout" />
       </header>
 
       <main class="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-8">

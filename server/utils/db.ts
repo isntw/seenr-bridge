@@ -79,7 +79,14 @@ CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   username TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
-  created INTEGER NOT NULL
+  created INTEGER NOT NULL,
+  -- A linked Plex account may sign in as this user. Matched on plex.tv's numeric
+  -- account id, never on username or email: the account holder can change both, and
+  -- a rename must not hand someone else's Plex account the keys to this panel. The
+  -- bridge username and the Plex username routinely differ anyway.
+  plex_id TEXT,
+  plex_username TEXT,
+  plex_thumb TEXT
 );
 CREATE TABLE IF NOT EXISTS sessions (
   token TEXT PRIMARY KEY,
@@ -141,6 +148,14 @@ CREATE TABLE IF NOT EXISTS shared_title_profiles (
     db.exec('ALTER TABLE events ADD COLUMN image TEXT')
   if (!eventCols.includes('series_key'))
     db.exec('ALTER TABLE events ADD COLUMN series_key TEXT')
+
+  const userCols = cols('users')
+  if (!userCols.includes('plex_id'))
+    db.exec('ALTER TABLE users ADD COLUMN plex_id TEXT')
+  if (!userCols.includes('plex_username'))
+    db.exec('ALTER TABLE users ADD COLUMN plex_username TEXT')
+  if (!userCols.includes('plex_thumb'))
+    db.exec('ALTER TABLE users ADD COLUMN plex_thumb TEXT')
 
   const mappingCols = cols('mappings')
   if (!mappingCols.includes('sync_movies'))
@@ -233,6 +248,9 @@ export interface User {
   username: string
   password_hash: string
   created: number
+  plex_id: string | null
+  plex_username: string | null
+  plex_thumb: string | null
 }
 
 export function settingsToWire(r: SettingsRow): Settings {
@@ -585,6 +603,41 @@ export function createUser(username: string, password_hash: string): User {
   return useDb().prepare('SELECT * FROM users WHERE id = ?').get(info.lastInsertRowid) as User
 }
 
+/** Create the first account from a Plex identity, with NO password. Only ever called
+ *  when countUsers() === 0, mirroring register.post.ts: whoever reaches an
+ *  unconfigured bridge first claims it, which is the posture the password setup flow
+ *  already has — this route is if anything stronger, since it proves control of a real
+ *  Plex account and records which one.
+ *
+ *  The empty password_hash is load-bearing, not a placeholder: verifyPassword() splits
+ *  on ':' and returns false without a salt, so password sign-in stays closed until the
+ *  operator sets one from Settings. */
+/** Whether Plex sign-in can succeed right now. True on a fresh install, where it would
+ *  create the account, and true afterwards as long as Tautulli is configured — that is
+ *  what tells the bridge which server's owner to accept.
+ *
+ *  Surfaced on the PUBLIC /api/auth/status so the login page can hide a button that
+ *  could only fail. It discloses "this bridge accepts Plex sign-in" and nothing else —
+ *  no account, no username — which is what any site showing an SSO button reveals. */
+export function plexLoginAvailable(): boolean {
+  if (countUsers() === 0) return true
+  const s = getSettings()
+  return !!s.tautulli_url && !!s.tautulli_apikey
+}
+
+export function createUserFromPlex(
+  username: string,
+  plex: { id: string; username: string; thumb: string },
+): User {
+  const info = useDb()
+    .prepare(
+      `INSERT INTO users (username, password_hash, created, plex_id, plex_username, plex_thumb)
+       VALUES (?, '', ?, ?, ?, ?)`,
+    )
+    .run(username, Date.now(), plex.id, plex.username, plex.thumb)
+  return useDb().prepare('SELECT * FROM users WHERE id = ?').get(info.lastInsertRowid) as User
+}
+
 export function getUserByUsername(username: string): User | undefined {
   return useDb()
     .prepare('SELECT * FROM users WHERE username = ? COLLATE NOCASE')
@@ -628,6 +681,24 @@ export function getSessionByToken(token: string): { user_id: number } | undefine
 
 export function deleteSession(token: string): void {
   useDb().prepare('DELETE FROM sessions WHERE token = ?').run(token)
+}
+
+/** Remember which Plex account signed in. This is a RECORD, not a credential: Plex
+ *  sign-in is authorised by owning the Plex server, so nothing here grants access and
+ *  clearing it would lock nobody out. It exists so Settings can name the identity. */
+export function recordPlexAccount(
+  id: number,
+  plex: { id: string; username: string; thumb: string },
+): void {
+  useDb()
+    .prepare('UPDATE users SET plex_id = ?, plex_username = ?, plex_thumb = ? WHERE id = ?')
+    .run(plex.id, plex.username, plex.thumb, id)
+}
+
+/** The single admin account. This panel has exactly one — register.post.ts refuses
+ *  once one exists — so "the user" is unambiguous. */
+export function firstUser(): User | undefined {
+  return useDb().prepare('SELECT * FROM users ORDER BY id LIMIT 1').get() as User | undefined
 }
 
 export function updateUserPassword(id: number, password_hash: string): void {

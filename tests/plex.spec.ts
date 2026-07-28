@@ -185,10 +185,19 @@ describe('getPlexAccount', () => {
   it('returns the username of the account the token belongs to', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
-      json: async () => ({ id: 9566164, username: 'isntw', email: 'owner@example.com' }),
+      json: async () => ({
+        id: 9566164,
+        username: 'isntw',
+        email: 'owner@example.com',
+        thumb: 'https://plex.tv/users/2fa8bb540581852d/avatar',
+      }),
     } as unknown as Response)
 
-    await expect(getPlexAccount('owner-tok')).resolves.toEqual({ username: 'isntw' })
+    await expect(getPlexAccount('owner-tok')).resolves.toEqual({
+      id: '9566164',
+      username: 'isntw',
+      thumb: 'https://plex.tv/users/2fa8bb540581852d/avatar',
+    })
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(url).toBe('https://plex.tv/api/v2/user')

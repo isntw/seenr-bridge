@@ -131,16 +131,51 @@ describe('processEvent guards', () => {
     expect(forwardToSeenr).not.toHaveBeenCalled()
   })
 
-  it('records a failure when forwarding is globally disabled', async () => {
+  // Recorded, but as a SKIP: the bridge was told not to forward, so nothing is broken
+  // and nothing needs fixing. Filed as a failure it showed up red on the Dashboard and
+  // counted against the failure total, which is what made a working install look sick.
+  it('records a skip, not a failure, when syncing is globally disabled', async () => {
     const { db, pipeline } = await configured()
     db.saveSettings({ forward_enabled: 0 })
     db.upsertMapping('alice', 'tok', 1, 1, 1)
     const r = await pipeline.processEvent(input)
 
     expect(r.ok).toBe(false)
+    expect(r.skipped).toBe(true)
     expect(r.reason).toBe('Syncing is disabled in settings')
     expect(forwardToSeenr).not.toHaveBeenCalled()
-    expect(db.listEvents(10)).toHaveLength(1)
+
+    const rows = db.listEvents(10)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.ok).toBe(0)
+    expect(rows[0]!.skipped).toBe(1)
+  })
+
+  it('leaves a seenr error a failure, not a skip', async () => {
+    const { db, pipeline } = await configured()
+    db.upsertMapping('alice', 'tok', 1, 1, 1)
+    forwardToSeenr.mockResolvedValueOnce({ status: 500, body: 'boom' })
+
+    await pipeline.processEvent(input)
+
+    const rows = db.listEvents(10)
+    expect(rows[0]!.ok).toBe(0)
+    expect(rows[0]!.skipped).toBe(0)
+  })
+
+  it('leaves a metadata lookup failure a failure, not a skip', async () => {
+    const { db, pipeline } = await configured()
+    db.upsertMapping('alice', 'tok', 1, 1, 1)
+    getMetadata.mockImplementation(async () => {
+      throw new Error('Tautulli HTTP 502')
+    })
+
+    const r = await pipeline.processEvent(input)
+
+    expect(r.skipped).toBeFalsy()
+    const rows = db.listEvents(10)
+    expect(rows[0]!.ok).toBe(0)
+    expect(rows[0]!.skipped).toBe(0)
   })
 })
 
@@ -397,11 +432,14 @@ describe('processEvent library gate', () => {
     db.saveSettings({ libraries: JSON.stringify(['2']) })
     getMetadata.mockImplementation(async () => ({ ...meta, section_id: '5', library_name: 'Filme' }))
 
-    await pipeline.processEvent(input)
+    const r = await pipeline.processEvent(input)
 
+    expect(r.skipped).toBe(true)
     const rows = db.listEvents(10)
     expect(rows).toHaveLength(1)
     expect(rows[0]!.ok).toBe(0)
+    // Visible, but not as a failure — the library rule is the operator's own.
+    expect(rows[0]!.skipped).toBe(1)
     expect(rows[0]!.error).toContain('Filme')
     expect(rows[0]!.error).toContain('not selected')
   })

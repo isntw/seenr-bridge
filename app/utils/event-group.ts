@@ -4,6 +4,8 @@ export interface EventRecipient {
   id: number
   username: string | null
   ok: boolean
+  /** Declined by configuration. Neither a success nor a failure — see ScrobbleEvent. */
+  skipped: boolean
   seenr_status: number | null
   plex_status: number | null
   error: string | null
@@ -23,6 +25,7 @@ export interface EventGroup {
   series_key: string | null
   recipients: EventRecipient[]
   okCount: number
+  skippedCount: number
 }
 
 export function groupEvents(events: ScrobbleEvent[]): EventGroup[] {
@@ -47,6 +50,7 @@ export function groupEvents(events: ScrobbleEvent[]): EventGroup[] {
         series_key: e.series_key,
         recipients: [],
         okCount: 0,
+        skippedCount: 0,
       }
       groups.set(key, g)
     }
@@ -54,12 +58,14 @@ export function groupEvents(events: ScrobbleEvent[]): EventGroup[] {
       id: e.id,
       username: e.username,
       ok: e.ok,
+      skipped: e.skipped,
       seenr_status: e.seenr_status,
       plex_status: e.plex_status,
       error: e.error,
       payload: e.payload,
     })
     if (e.ok) g.okCount += 1
+    else if (e.skipped) g.skippedCount += 1
   }
 
   return [...groups.values()]

@@ -37,6 +37,71 @@ describe('migrations', () => {
   })
 })
 
+describe('event stats', () => {
+  function eventRow(over: Record<string, unknown> = {}) {
+    return {
+      ts: 1_000, action: 'watched', event: 'media.scrobble', username: 'alice',
+      media_type: 'episode', title: 'Ozymandias', rating_key: '12345', ids: null,
+      image: null, series_key: null, seenr_status: null, plex_status: null,
+      ok: 0, skipped: 0, error: null, payload: null,
+      ...over,
+    }
+  }
+
+  // The failure count is what tells an operator something is wrong. A watch the bridge
+  // was configured to decline is not that, so it gets its own tally and is subtracted
+  // out — otherwise turning Syncing off makes every subsequent watch a "failure".
+  it('counts a skipped row on its own and keeps it out of the failure count', async () => {
+    const db = await freshDb()
+    db.insertEvent(eventRow({ ok: 1 }))
+    db.insertEvent(eventRow({ ok: 0, error: 'seenr HTTP 500' }))
+    db.insertEvent(eventRow({ ok: 0, skipped: 1, error: 'Syncing is disabled in settings' }))
+
+    const s = db.getStats()
+    expect(s.total).toBe(3)
+    expect(s.ok).toBe(1)
+    expect(s.failed).toBe(1)
+    expect(s.skipped).toBe(1)
+  })
+
+  // Upgrading must not leave a shelf of red rows describing a setting the operator
+  // chose. Only the exact strings the bridge writes are reclassified — anything else
+  // stays a failure, because an old row that cannot be identified must not be cleared.
+  it('reclassifies historical decline rows when the column is added', async () => {
+    const db = await freshDb()
+    db.insertEvent(eventRow({ ok: 0, error: 'Syncing is disabled in settings' }))
+    db.insertEvent(eventRow({ ok: 0, error: 'Forwarding is disabled in settings' })) // pre-2.3.0
+    db.insertEvent(eventRow({ ok: 0, error: 'Library "Filme" is not selected in Settings' }))
+    db.insertEvent(eventRow({ ok: 0, error: 'seenr HTTP 500 upstream error' }))
+    db.insertEvent(eventRow({ ok: 1 }))
+
+    // Put the table back into its pre-migration shape and reopen, which is the only
+    // way to exercise the guard: a fresh file is created with the column already there.
+    db.useDb().exec('ALTER TABLE events DROP COLUMN skipped')
+    db.closeDb()
+
+    const upgraded = await freshDb()
+    const rows = upgraded.listEvents(10)
+    const by = (needle: string) => rows.find((r) => r.error?.includes(needle))!
+
+    expect(by('Syncing is disabled').skipped).toBe(1)
+    expect(by('Forwarding is disabled').skipped).toBe(1)
+    expect(by('not selected in Settings').skipped).toBe(1)
+    expect(by('seenr HTTP 500').skipped).toBe(0)
+    expect(rows.find((r) => r.ok === 1)!.skipped).toBe(0)
+    expect(upgraded.getStats()).toMatchObject({ ok: 1, failed: 1, skipped: 3 })
+  })
+
+  it('carries skipped across the wire boundary as a boolean', async () => {
+    const db = await freshDb()
+    db.insertEvent(eventRow({ ok: 0, skipped: 1 }))
+
+    const wire = db.eventToWire(db.listEvents(1)[0]!)
+    expect(wire.skipped).toBe(true)
+    expect(wire.ok).toBe(false)
+  })
+})
+
 describe('mappings', () => {
   it('upsert updates rather than duplicating on username conflict', async () => {
     const db = await freshDb()
@@ -63,7 +128,7 @@ describe('events', () => {
     const base = {
       action: 'watched', event: 'media.scrobble', username: 'alice',
       media_type: 'episode', title: 't', rating_key: '1', ids: '[]',
-      image: null, series_key: null, seenr_status: 200, plex_status: null, ok: 1,
+      image: null, series_key: null, seenr_status: 200, plex_status: null, ok: 1, skipped: 0,
       error: null, payload: null,
     }
     for (let i = 0; i < 1005; i++) {
@@ -144,7 +209,7 @@ describe('wire conversion', () => {
       ts: 1_700_000_000_000, action: 'watched', event: 'media.scrobble',
       username: 'alice', media_type: 'episode', title: 't', rating_key: '1',
       ids: JSON.stringify(['tmdb://62161', 'imdb://tt2301455']),
-      image: null, series_key: null, seenr_status: 200, plex_status: null, ok: 1,
+      image: null, series_key: null, seenr_status: 200, plex_status: null, ok: 1, skipped: 0,
       error: null, payload: null,
     })
     const row = db.listEvents(10).find((r) => r.id === id)!
@@ -160,7 +225,7 @@ describe('wire conversion', () => {
       ts: 1_700_000_000_000, action: 'watched', event: 'media.scrobble',
       username: 'alice', media_type: 'movie', title: 't', rating_key: '1',
       ids: '{not valid json',
-      image: null, series_key: null, seenr_status: 500, plex_status: null, ok: 0,
+      image: null, series_key: null, seenr_status: 500, plex_status: null, ok: 0, skipped: 0,
       error: 'boom', payload: null,
     })
     const row = db.listEvents(10).find((r) => r.id === id)!
@@ -360,7 +425,7 @@ describe('plex columns', () => {
       ts: 1, action: 'watched', event: 'media.scrobble', username: 'alice',
       media_type: 'episode', title: 'Ozymandias', rating_key: '12345', ids: '[]',
       image: null, series_key: '999', seenr_status: 200, plex_status: 200,
-      ok: 1, error: null, payload: null,
+      ok: 1, skipped: 0, error: null, payload: null,
     })
 
     const row = db.listEvents(1)[0]!

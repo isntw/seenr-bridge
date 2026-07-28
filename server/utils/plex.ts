@@ -99,6 +99,50 @@ export async function getSharedTokens(
   return parseSharedServers(await res.text())
 }
 
+export interface PlexResource {
+  name: string
+  product: string
+  productVersion: string
+  platform: string
+  device: string
+  owned: boolean
+}
+
+interface PlexResourceRaw extends Partial<PlexResource> {
+  clientIdentifier?: string
+}
+
+/** plex.tv's description of one server the account can see, matched by machineId.
+ *  Purely descriptive — it names the server the bridge is about to write to, so the
+ *  operator can confirm it is the right one. Never load-bearing: callers treat a
+ *  failure here as "no detail available", not as a broken connection. */
+export async function getPlexResource(
+  ownerToken: string,
+  clientId: string,
+  machineId: string,
+): Promise<PlexResource | null> {
+  const res = await fetch(`${PLEX_TV}/api/v2/resources?includeHttps=1`, {
+    headers: {
+      accept: 'application/json',
+      'X-Plex-Client-Identifier': clientId,
+      'X-Plex-Token': ownerToken,
+    },
+  })
+  if (!res.ok) throw new Error(`plex.tv HTTP ${res.status}`)
+
+  const all = (await res.json()) as PlexResourceRaw[]
+  const r = Array.isArray(all) ? all.find((x) => x.clientIdentifier === machineId) : undefined
+  if (!r) return null
+  return {
+    name: String(r.name ?? ''),
+    product: String(r.product ?? ''),
+    productVersion: String(r.productVersion ?? ''),
+    platform: String(r.platform ?? ''),
+    device: String(r.device ?? ''),
+    owned: !!r.owned,
+  }
+}
+
 /** The username of the account a token belongs to. Needed because the OWNER never
  *  appears in shared_servers — you do not share a server with yourself — so without
  *  this the owner is indistinguishable from a user who has no token at all. */

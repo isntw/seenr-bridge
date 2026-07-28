@@ -13,7 +13,11 @@ export default defineEventHandler(async (event) => {
   const current = String(body?.current_password || '')
   const next = String(body?.new_password || '')
 
-  if (!verifyPassword(current, user.password_hash)) {
+  // An account created by signing in with Plex has no password at all. Setting the
+  // first one must not demand a current one it could never have — but changing an
+  // existing password still must, or a stolen session becomes a password reset.
+  const hasPassword = !!user.password_hash
+  if (hasPassword && !verifyPassword(current, user.password_hash)) {
     throw createError({ statusCode: 400, statusMessage: 'Current password is wrong.' })
   }
   if (next.length < 8) {

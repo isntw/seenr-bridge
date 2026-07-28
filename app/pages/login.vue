@@ -13,6 +13,40 @@ const error = ref<string | null>(null)
 
 const isSetup = computed(() => auth.needsSetup)
 
+const plexBusy = ref(false)
+
+// On a fresh install Plex sign-in CREATES the account, so it is a genuine alternative
+// to the setup form rather than a second way into an existing one.
+async function signInWithPlex() {
+  error.value = null
+  plexBusy.value = true
+  try {
+    const pin = await auth.startPlexLogin()
+    window.open(pin.url, '_blank', 'noopener')
+
+    const deadline = Date.now() + 120_000
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 2000))
+      try {
+        if (await auth.pollPlexLogin(pin.id)) {
+          await navigateTo('/dashboard')
+          return
+        }
+      } catch (e) {
+        // A refusal is final — an unlinked account will not become linked by polling
+        // again — so surface it and stop rather than spinning to the deadline.
+        error.value = apiErrorMessage(e, 'Could not sign in with Plex.')
+        return
+      }
+    }
+    error.value = 'Timed out waiting for Plex. Try again.'
+  } catch (e) {
+    error.value = apiErrorMessage(e, 'Could not sign in with Plex.')
+  } finally {
+    plexBusy.value = false
+  }
+}
+
 async function submit() {
   error.value = null
 
@@ -88,6 +122,29 @@ async function submit() {
             block
           />
         </form>
+
+        <!-- Hidden when it could only fail — no Tautulli connection means the bridge
+             cannot tell which server's owner to accept. On a fresh install it is shown,
+             because there it CREATES the account. -->
+        <template v-if="auth.plexLogin">
+          <div class="my-4 flex items-center gap-3">
+            <hr class="flex-1 border-muted">
+            <span class="text-xs text-dimmed">or</span>
+            <hr class="flex-1 border-muted">
+          </div>
+
+          <PlexSignInButton
+            class="w-full justify-center"
+            :loading="plexBusy"
+            :label="isSetup ? 'Create account with Plex' : 'Sign in with Plex'"
+            @click="signInWithPlex"
+          />
+          <p class="mt-2 text-center text-xs text-dimmed">
+            {{ isSetup
+              ? 'Creates your account from your Plex identity — no password needed.'
+              : 'For the owner of the Plex server this bridge watches.' }}
+          </p>
+        </template>
       </UCard>
 
       <div class="mt-5 text-center text-[11px] text-dimmed">Seenr Bridge · v{{ VERSION }}</div>

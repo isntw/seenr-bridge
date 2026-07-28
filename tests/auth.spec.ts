@@ -66,8 +66,11 @@ describe('SESSION_COOKIE', () => {
 })
 
 describe('PUBLIC_API_PATHS', () => {
-  it('contains exactly the seven expected bypass paths', () => {
-    expect(PUBLIC_API_PATHS.size).toBe(7)
+  // Deliberately exhaustive, and deliberately annoying to change: every entry here is
+  // reachable with no session, so widening the set must be a conscious edit to this
+  // test rather than something that slips in beside a feature.
+  it('contains exactly the nine expected bypass paths', () => {
+    expect(PUBLIC_API_PATHS.size).toBe(9)
     expect(new Set(PUBLIC_API_PATHS)).toEqual(
       new Set([
         '/api/health',
@@ -77,8 +80,21 @@ describe('PUBLIC_API_PATHS', () => {
         '/api/auth/login',
         '/api/auth/register',
         '/api/auth/logout',
+        // Plex sign-in, which necessarily happens before a session exists. Static
+        // paths: the PIN id travels in the POST body so no dynamic segment is needed,
+        // which is what keeps this an exact-match set rather than a prefix match.
+        '/api/auth/plex/start',
+        '/api/auth/plex/poll',
       ]),
     )
+  })
+
+  // The traversal guard that makes the icon prefix safe must keep holding for the new
+  // entries too: they are exact matches, so an encoded suffix must NOT bypass the gate.
+  it('does not treat a path merely starting with a public one as public', () => {
+    expect(requiresAuth('/api/auth/plex/start/../../settings')).toBe(true)
+    expect(requiresAuth('/api/auth/plex/poll/%2e%2e/settings')).toBe(true)
+    expect(requiresAuth('/api/auth/plex/startx')).toBe(true)
   })
 })
 
@@ -89,7 +105,7 @@ describe('requiresAuth (middleware decision, extracted for testability)', () => 
     expect(requiresAuth('/_nuxt/entry.js')).toBe(false)
   })
 
-  it('does not gate any of the seven public /api paths', () => {
+  it('does not gate any of the public /api paths', () => {
     for (const p of PUBLIC_API_PATHS) {
       expect(requiresAuth(p)).toBe(false)
     }
@@ -148,5 +164,16 @@ describe('setSessionCookie', () => {
     expect(cookie).toMatch(/SameSite=Lax/)
     expect(cookie).toMatch(/Path=\//)
     expect(cookie).toMatch(/Max-Age=2592000/)
+  })
+})
+
+describe('verifyPassword against a Plex-created account', () => {
+  // An account created by signing in with Plex stores an EMPTY hash, and password
+  // sign-in must refuse it rather than comparing against nothing. Malformed hashes are
+  // already covered above; what is new here is that an empty stored hash paired with an
+  // empty submitted password must not "match".
+  it('refuses even an empty password when no password is set', () => {
+    expect(verifyPassword('', '')).toBe(false)
+    expect(verifyPassword('anything', '')).toBe(false)
   })
 })

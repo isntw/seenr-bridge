@@ -4,6 +4,12 @@ Notable changes per release. Versions follow [semantic versioning](https://semve
 
 ## 2.3.1
 
+### Added
+
+- **Sign in with Plex.** The login page now offers Plex sign-in to whoever **owns** the Plex server the bridge watches — the same test Tautulli uses for its own admin sign-in. There is nothing to link and nothing to configure: if you own the server, you are the operator. A user you have merely *shared* the server with is refused, since access is not ownership.
+- On a **brand-new install** Plex sign-in also creates the account, named after your Plex username and with no password. Set one later from the account menu if you want a second way in, or never — password sign-in stays closed until you do, so a passwordless account is not a way in.
+- Your password keeps working throughout, so a plex.tv outage can never lock you out. For the same reason the login page hides the Plex button when the bridge has no Tautulli connection yet: without it there is no server whose owner could be checked.
+
 ### Fixed
 
 - A shared title only matched watches from the exact library copy it was created from. Two libraries can hold the same show or film under different `rating_key`s — e.g. House as both "House" in *TV Shows* and "Dr. House" in *Seriale* — so a share created from the copy you don't play from matched nothing: no fan-out to the co-watchers, no Plex marking, and no error to explain it. Shares now match on Plex's own id for the title, which is identical across library copies, with `rating_key` kept as a fallback. Existing shares have their id filled in automatically on the next visit to the Shared page; nothing needs re-adding.

@@ -53,6 +53,13 @@ export const PUBLIC_API_PATHS = new Set([
   '/api/auth/login',
   '/api/auth/register',
   '/api/auth/logout',
+  // Plex sign-in happens before a session exists, so both steps must be reachable
+  // unauthenticated. Exact paths, never a prefix: the PIN id travels in the POST body
+  // precisely so no dynamic segment is needed here — see the note on ICON_PATH_PREFIX
+  // below for what prefix matching costs. Neither endpoint grants anything by itself;
+  // /poll only issues a session for a Plex account the operator has already linked.
+  '/api/auth/plex/start',
+  '/api/auth/plex/poll',
 ])
 
 // @nuxt/icon serves the bundled icon collections from /api/_nuxt_icon/<name>.json

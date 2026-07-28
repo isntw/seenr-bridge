@@ -60,6 +60,14 @@ export interface AuthStatus {
   authenticated: boolean
   username: string | null
   needsSetup: boolean
+  /** Whether the login page should offer Plex sign-in. Only set by /api/auth/status —
+   *  it describes what the login page can do, not anything about a session. */
+  plexLogin?: boolean
+  /** Whether the signed-in account has a password at all. An account created by
+   *  signing in with Plex has none, so the account menu must offer to SET one rather
+   *  than asking for a current password it could never have. Only sent to an
+   *  authenticated caller — an anonymous one has no business knowing. */
+  hasPassword?: boolean
 }
 
 export interface TautulliMetadata {
@@ -199,4 +207,23 @@ export interface BackfillResult {
   delivered: number // total scrobbles sent (items × profiles, minus skips)
   ok_count: number
   fail_count: number
+}
+
+/** A Plex account that may sign in to the panel, and the one Settings has connected
+ *  and could bind. Matched on `id` — plex.tv's numeric account id — never on username
+ *  or email, since the holder can change both. */
+export interface PlexAccountRef {
+  id: string
+  username: string
+  thumb: string
+}
+
+export interface PlexLoginLink {
+  /** The bridge user this link belongs to. */
+  username: string
+  /** The account already allowed to sign in, or null. */
+  linked: PlexAccountRef | null
+  /** The account Settings is connected as, offered so binding needs no second sign-in.
+   *  Null when Plex is not connected or plex.tv could not be reached. */
+  available: PlexAccountRef | null
 }

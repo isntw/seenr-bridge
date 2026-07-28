@@ -660,6 +660,7 @@ export function getPendingWatches(ratingKey: string, guid?: string | null): Pend
          FROM pending_watches p
          JOIN mappings m ON m.id = p.mapping_id
         WHERE p.created > ?
+          AND m.enabled = 1
           AND (p.rating_key = ? OR (? IS NOT NULL AND p.guid = ?))`,
     )
     .all(Date.now() - PENDING_TTL_MS, ratingKey, g, g) as (MappingRow & { pending_id: number })[]

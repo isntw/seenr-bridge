@@ -572,6 +572,19 @@ describe('pending watches', () => {
     expect(db.getPendingWatches('12345')).toHaveLength(0)
   })
 
+  it('excludes a row for a profile whose mapping is now disabled', async () => {
+    const db = await freshDb()
+    const alice = db.upsertMapping('alice', 'tok-a', 1, 1, 1)
+    const bob = db.upsertMapping('bob', 'tok-b', 1, 1, 1)
+    db.addPendingWatches('12345', null, [alice.id, bob.id])
+
+    // Disabled after the one-off was filed — the row itself is untouched, only the
+    // mapping is; the gate has to catch this at read time, not at write time.
+    db.upsertMapping('bob', 'tok-b', 0, 1, 1)
+
+    expect(db.getPendingWatches('12345').map((p) => p.mapping.username)).toEqual(['alice'])
+  })
+
   it('adds the table to a database created before it existed', async () => {
     const db = await freshDb()
     db.useDb().exec('DROP TABLE pending_watches')

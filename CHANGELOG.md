@@ -10,6 +10,14 @@ Notable changes per release. Versions follow [semantic versioning](https://semve
 - On a **brand-new install** Plex sign-in also creates the account, named after your Plex username and with no password. Set one later from the account menu if you want a second way in, or never — password sign-in stays closed until you do, so a passwordless account is not a way in.
 - Your password keeps working throughout, so a plex.tv outage can never lock you out. For the same reason the login page hides the Plex button when the bridge has no Tautulli connection yet: without it there is no server whose owner could be checked.
 
+### Changed
+
+- The Setup header now reports all three connections at a glance — Tautulli, its event webhook and Plex — as pills whose dot carries the state, alongside the mapped-user count. Plex was absent from that row before, so whether the bridge could write to Plex at all was only visible after scrolling down to step 3. An unlinked Plex reads grey rather than red, since that step is optional, and amber means linked but some mapped users have no access, so their watches would not land.
+
+### Fixed
+
+- Two mobile layouts on the Settings page. The Syncing switch now stays on the first line beside the heading, with the status pills on their own row underneath, instead of being pushed to the end of a crowded second line. And on the connected-Plex card the Reconnect and Disconnect buttons wrap to their own row rather than squeezing the account, server address and sign-in note into a third of the card's width.
+
 ## 2.3.1
 
 ### Fixed

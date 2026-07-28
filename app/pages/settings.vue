@@ -328,14 +328,16 @@ async function disconnectPlex() {
   }
 }
 
-// Reads as a sentence rather than a ratio. "0 of 0 users matched" is what a fresh
-// install would otherwise show — connected and fine, but phrased like a failure.
+// No "connected —" prefix: the card only renders once connected, and the chip beside
+// this text already carries the state. Phrased as a sentence rather than a ratio,
+// because "0 of 0" is what a fresh install would otherwise show — perfectly healthy,
+// worded like a failure.
 const matchedLabel = computed(() => {
   const l = plexLink.value
   if (!l) return ''
   const total = l.matched.length + l.unmatched.length
-  if (!total) return 'connected — no users mapped yet'
-  if (!l.unmatched.length) return total === 1 ? 'connected — 1 user ready' : `connected — all ${total} users ready`
+  if (!total) return 'no users mapped yet'
+  if (!l.unmatched.length) return total === 1 ? '1 user ready' : `all ${total} users ready`
   return `${l.matched.length} of ${total} users ready`
 })
 
@@ -740,32 +742,36 @@ async function runTest(dryRun: boolean) {
             </span>
 
             <div class="min-w-0 flex-1">
-              <div class="flex flex-wrap items-center gap-2">
+              <div class="flex flex-wrap items-center gap-x-2">
                 <span class="truncate text-sm font-medium text-highlighted">
                   {{ plexLink.server?.name || 'Plex server' }}
                 </span>
-                <UBadge
-                  v-if="plexLink.server?.owned"
-                  color="success"
-                  variant="subtle"
-                  size="sm"
-                  label="owner"
-                />
-                <UBadge
-                  :color="plexLink.unmatched.length ? 'warning' : 'success'"
-                  variant="subtle"
-                  size="sm"
-                  :label="matchedLabel"
-                />
+                <!-- A chip and muted text, matching the tautulli/webhook indicators in
+                     the status bar above, rather than a coloured pill: two green pills
+                     beside the name competed with it and read as more urgent than the
+                     name itself. -->
+                <span class="flex items-center gap-1.5 text-xs">
+                  <UChip standalone inset size="xs" :color="plexLink.unmatched.length ? 'warning' : 'success'" />
+                  <span :class="plexLink.unmatched.length ? 'text-warning' : 'text-muted'">
+                    {{ matchedLabel }}
+                  </span>
+                </span>
               </div>
               <div class="mt-0.5 truncate text-xs text-dimmed">
-                <span v-if="plexLink.account">signed in as {{ plexLink.account }}</span>
+                <span v-if="plexLink.account">{{ plexLink.account }}</span>
                 <template v-if="plexLink.server?.product"> · {{ plexLink.server.product }}</template>
                 <template v-if="plexLink.server?.platform"> · {{ plexLink.server.platform }}</template>
               </div>
               <div v-if="plexLink.server?.url" class="mt-0.5 truncate font-mono text-xs text-dimmed">
                 {{ plexLink.server.url }}
               </div>
+              <!-- Ownership is only worth saying when it is WRONG. Owning the server is
+                   the normal case and a green "owner" badge just added noise; not owning
+                   it means every write will fail, which deserves a real warning. -->
+              <p v-if="plexLink.server?.owned === false" class="mt-1 text-xs text-warning">
+                This account does not own {{ plexLink.server?.name || 'this server' }} — it
+                cannot change anyone's watched state on it.
+              </p>
             </div>
 
             <div class="flex shrink-0 items-center gap-1">

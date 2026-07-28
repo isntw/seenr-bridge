@@ -36,6 +36,10 @@ export interface ScrobbleEvent {
   seenr_status: number | null
   plex_status: number | null
   ok: boolean
+  /** The bridge declined this watch by the operator's own configuration — syncing off,
+   *  or a library that is not selected. Not a failure: nothing was attempted and
+   *  nothing is broken, so it must never be counted or coloured as one. */
+  skipped: boolean
   error: string | null
   payload: string | null
 }
@@ -43,7 +47,10 @@ export interface ScrobbleEvent {
 export interface Stats {
   total: number
   ok: number
+  /** Attempts that failed. Excludes `skipped`, so this number only ever moves when
+   *  something actually needs fixing. */
   failed: number
+  skipped: number
   last: number | null
   episodes: number
   movies: number

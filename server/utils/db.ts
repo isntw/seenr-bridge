@@ -70,6 +70,9 @@ CREATE TABLE IF NOT EXISTS events (
   seenr_status INTEGER,
   plex_status INTEGER,
   ok INTEGER NOT NULL DEFAULT 0,
+  -- Declined by configuration rather than attempted and failed. A zero ok alone could
+  -- not tell the two apart, so every decline rendered red and counted as a failure.
+  skipped INTEGER NOT NULL DEFAULT 0,
   error TEXT,
   payload TEXT
 );
@@ -199,6 +202,22 @@ CREATE TABLE IF NOT EXISTS shared_title_profiles (
   // must not start doing that to titles shared months ago.
   if (!sharedCols.includes('plex_sync'))
     db.exec('ALTER TABLE shared_titles ADD COLUMN plex_sync INTEGER NOT NULL DEFAULT 0')
+
+  // Defaults to 0 — an unrecognised old row stays a failure rather than being quietly
+  // cleared. But the two declines the bridge records were written with strings the
+  // bridge itself produced, so those rows CAN be identified exactly and are reclassified
+  // once, when the column appears. Without this an upgrade leaves every historical
+  // "syncing is off" watch red on the Dashboard, which is the very complaint this
+  // column exists to fix. Both wordings are matched: the message was renamed from
+  // "Forwarding" to "Syncing" in 2.3.0, and rows predating that are still in the table.
+  if (!eventCols.includes('skipped')) {
+    db.exec('ALTER TABLE events ADD COLUMN skipped INTEGER NOT NULL DEFAULT 0')
+    db.prepare(
+      `UPDATE events SET skipped = 1
+        WHERE error IN ('Syncing is disabled in settings', 'Forwarding is disabled in settings')
+           OR error LIKE 'Library "%" is not selected in Settings'`,
+    ).run()
+  }
 }
 
 export interface SettingsRow {
@@ -239,6 +258,7 @@ export interface EventRowDb {
   seenr_status: number | null
   plex_status: number | null
   ok: number
+  skipped: number
   error: string | null
   payload: string | null
 }
@@ -295,7 +315,7 @@ export function eventToWire(r: EventRowDb): ScrobbleEvent {
   } catch {
     ids = []
   }
-  return { ...r, ok: !!r.ok, ids }
+  return { ...r, ok: !!r.ok, skipped: !!r.skipped, ids }
 }
 
 export function getSettings(): SettingsRow {
@@ -560,8 +580,8 @@ const MAX_EVENTS = 1000
 export function insertEvent(e: Omit<EventRowDb, 'id'>): number {
   const info = useDb()
     .prepare(
-      `INSERT INTO events (ts, action, event, username, media_type, title, rating_key, ids, image, series_key, seenr_status, plex_status, ok, error, payload)
-       VALUES (@ts, @action, @event, @username, @media_type, @title, @rating_key, @ids, @image, @series_key, @seenr_status, @plex_status, @ok, @error, @payload)`,
+      `INSERT INTO events (ts, action, event, username, media_type, title, rating_key, ids, image, series_key, seenr_status, plex_status, ok, skipped, error, payload)
+       VALUES (@ts, @action, @event, @username, @media_type, @title, @rating_key, @ids, @image, @series_key, @seenr_status, @plex_status, @ok, @skipped, @error, @payload)`,
     )
     .run(e)
   // keep only the newest MAX_EVENTS rows (no-op until the table exceeds the cap)
@@ -582,14 +602,18 @@ export function getStats(): Stats {
   const one = (sql: string) => (db.prepare(sql).get() as { c: number }).c
   const total = one('SELECT COUNT(*) c FROM events')
   const ok = one('SELECT COUNT(*) c FROM events WHERE ok = 1')
-  const failed = total - ok
+  const skipped = one('SELECT COUNT(*) c FROM events WHERE skipped = 1')
+  // Counted, not subtracted: `total - ok - skipped` would go wrong the moment a row
+  // carried both flags, and this asks the question the number actually answers —
+  // how many attempts failed.
+  const failed = one('SELECT COUNT(*) c FROM events WHERE ok = 0 AND skipped = 0')
   const last =
     (db.prepare('SELECT ts FROM events ORDER BY ts DESC LIMIT 1').get() as { ts: number } | undefined)
       ?.ts ?? null
   const episodes = one("SELECT COUNT(*) c FROM events WHERE media_type = 'episode'")
   const movies = one("SELECT COUNT(*) c FROM events WHERE media_type = 'movie'")
   const users = one('SELECT COUNT(*) c FROM mappings')
-  return { total, ok, failed, last, episodes, movies, users }
+  return { total, ok, failed, skipped, last, episodes, movies, users }
 }
 
 export function countUsers(): number {

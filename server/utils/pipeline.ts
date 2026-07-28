@@ -96,7 +96,9 @@ async function deliverToMapping(
     insertEvent({
       ts: now, action, event: built.event, username: mapping.username, media_type: meta.media_type,
       title: built.title, rating_key: ratingKey, ids: JSON.stringify(built.ids), image, series_key,
-      seenr_status: status, plex_status, ok: ok ? 1 : 0,
+      // Never a skip: reaching here means the forward was actually attempted. The
+      // per-mapping gates that decline one return above, before any row is written.
+      seenr_status: status, plex_status, ok: ok ? 1 : 0, skipped: 0,
       error: [seenrError, plexError].filter(Boolean).join(' · ') || null,
       payload: JSON.stringify(built.payload),
     })
@@ -130,17 +132,30 @@ export async function processEvent(
   const settings = getSettings()
   const now = Date.now()
 
-  const fail = (reason: string, extra: Partial<ProcessResult> = {}): ProcessResult => {
+  // Two kinds of non-delivery, recorded the same way but NOT the same thing. `fail` is
+  // "we tried and it broke"; `skip` is "the operator's own configuration said don't".
+  // They shared one code path before, so a switched-off bridge reported every watch as
+  // a red failure and inflated the Dashboard's failure count with nothing to fix.
+  const notDelivered = (
+    reason: string,
+    skipped: boolean,
+    extra: Partial<ProcessResult>,
+  ): ProcessResult => {
     if (record)
       insertEvent({
         ts: now, action: input.action, event: extra.event ?? null, username: input.username,
         media_type: extra.media_type ?? null, title: extra.title ?? null, rating_key: input.rating_key,
         ids: extra.ids ? JSON.stringify(extra.ids) : null, image: extra.image ?? null, series_key: null,
         seenr_status: extra.seenr_status ?? null, plex_status: null,
-        ok: 0, error: reason, payload: extra.payload ? JSON.stringify(extra.payload) : null,
+        ok: 0, skipped: skipped ? 1 : 0, error: reason,
+        payload: extra.payload ? JSON.stringify(extra.payload) : null,
       })
-    return { ok: false, reason, ...extra }
+    return { ok: false, ...(skipped ? { skipped: true } : {}), reason, ...extra }
   }
+  const fail = (reason: string, extra: Partial<ProcessResult> = {}) =>
+    notDelivered(reason, false, extra)
+  const skip = (reason: string, extra: Partial<ProcessResult> = {}) =>
+    notDelivered(reason, true, extra)
 
   if (!settings.tautulli_url || !settings.tautulli_apikey)
     return fail('Tautulli connection not configured')
@@ -175,11 +190,11 @@ export async function processEvent(
   const allowed = parseLibraries(settings.libraries)
   if (allowed.length && !allowed.includes(String(meta.section_id ?? ''))) {
     const where = meta.library_name || `section ${meta.section_id ?? '?'}`
-    return fail(`Library "${where}" is not selected in Settings`, common)
+    return skip(`Library "${where}" is not selected in Settings`, common)
   }
 
   if (!settings.forward_enabled)
-    return fail('Syncing is disabled in settings', common)
+    return skip('Syncing is disabled in settings', common)
 
   // Fan-out: if this title is shared AND the watcher is one of its profiles,
   // deliver to every assigned profile; otherwise just the watcher.

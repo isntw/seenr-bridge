@@ -20,6 +20,7 @@ function ev(over: Partial<ScrobbleEvent> = {}): ScrobbleEvent {
     seenr_status: 200,
     plex_status: null,
     ok: true,
+    skipped: false,
     error: null,
     payload: null,
     ...over,
@@ -48,6 +49,18 @@ describe('groupEvents', () => {
     expect(out).toHaveLength(1)
     expect(out[0]!.recipients.map((r) => r.username)).toEqual(['carol', 'bob', 'alice'])
     expect(out[0]!.okCount).toBe(3)
+  })
+
+  // A skip is neither a success nor a failure, so it needs its own tally: the row badge
+  // is drawn from these counts, and `total - okCount` alone cannot tell them apart.
+  it('counts skipped recipients apart from ok and failed ones', () => {
+    const out = groupEvents([
+      ev({ id: 1, username: 'alice', ok: false, skipped: true, seenr_status: null }),
+    ])
+
+    expect(out[0]!.okCount).toBe(0)
+    expect(out[0]!.skippedCount).toBe(1)
+    expect(out[0]!.recipients[0]).toMatchObject({ ok: false, skipped: true })
   })
 
   it('keeps per-recipient status, because each forward succeeds or fails on its own', () => {

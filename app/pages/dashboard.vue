@@ -86,8 +86,7 @@ const remaining = computed(() =>
       </UCard>
     </div>
 
-         would sit at the top of the page permanently. `changed` refetches the sessions
-         so a queued one-off is reflected on the next tick rather than in 5s. -->
+    <!-- Absent rather than empty when nothing plays: an idle card would sit here permanently. -->
     <NowPlaying
       :sessions="activity ?? []"
       :mappings="mappings ?? []"

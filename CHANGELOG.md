@@ -20,6 +20,8 @@ Notable changes per release. Versions follow [semantic versioning](https://semve
 
 - The layout now respects display cut-outs. Content no longer sits under the
   status bar or the home indicator when launched from the home screen.
+- A stray fragment of a source comment no longer renders as text above the Now
+  playing card on the Dashboard.
 
 ## 2.5.0
 

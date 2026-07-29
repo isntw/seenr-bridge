@@ -9,6 +9,8 @@ import {
   verifyPassword,
   SESSION_COOKIE,
   PUBLIC_API_PATHS,
+  WEBHOOK_SECRET_HEADER,
+  webhookSecretValid,
   setSessionCookie,
   requiresAuth,
 } from '../server/utils/auth'
@@ -175,5 +177,60 @@ describe('verifyPassword against a Plex-created account', () => {
   it('refuses even an empty password when no password is set', () => {
     expect(verifyPassword('', '')).toBe(false)
     expect(verifyPassword('anything', '')).toBe(false)
+  })
+})
+
+describe('webhookSecretValid', () => {
+  // No secret stored means an install whose Tautulli notifier predates
+  // authentication. It must keep working, or upgrading silently stops every
+  // scrobble: the 401 happens before processEvent(), so no event row is written
+  // and nothing shows on the Dashboard.
+  it('accepts anything when no secret is configured', () => {
+    expect(webhookSecretValid(undefined, '')).toBe(true)
+    expect(webhookSecretValid('whatever', '')).toBe(true)
+  })
+
+  it('rejects a missing header once a secret exists', () => {
+    expect(webhookSecretValid(undefined, 'the-secret')).toBe(false)
+    expect(webhookSecretValid('', 'the-secret')).toBe(false)
+  })
+
+  it('rejects a wrong secret', () => {
+    expect(webhookSecretValid('nope', 'the-secret')).toBe(false)
+    // Same length, so this exercises the compare rather than the length guard.
+    expect(webhookSecretValid('the-secreX', 'the-secret')).toBe(false)
+  })
+
+  it('accepts the right secret', () => {
+    expect(webhookSecretValid('the-secret', 'the-secret')).toBe(true)
+  })
+
+  it('uses a lowercase header name, which is what getRequestHeader looks up', () => {
+    expect(WEBHOOK_SECRET_HEADER).toBe(WEBHOOK_SECRET_HEADER.toLowerCase())
+  })
+})
+
+describe('webhook secret storage', () => {
+  it('is created once and reused', async () => {
+    const db = await import('../server/utils/db')
+    expect(db.getWebhookSecret()).toBe('')
+
+    const first = db.ensureWebhookSecret()
+    expect(first).toHaveLength(64)
+    expect(db.ensureWebhookSecret()).toBe(first)
+    expect(db.getWebhookSecret()).toBe(first)
+  })
+
+  // settingsToWire() spreads the row, so a secret on SettingsRow would be served to
+  // any authenticated browser as part of GET /api/settings.
+  it('never appears in the settings wire payload', async () => {
+    const db = await import('../server/utils/db')
+    db.ensureWebhookSecret()
+
+    const wire = JSON.stringify(db.settingsToWire(db.getSettings()))
+
+    expect(wire).not.toContain(db.getWebhookSecret())
+    expect(wire).not.toContain('webhook_secret')
+    expect(wire).not.toContain('vapid_private')
   })
 })

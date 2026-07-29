@@ -351,7 +351,7 @@ Expected: PASS, 5 tests.
 npm test && npm run typecheck
 ```
 
-Expected: 95 tests passing (90 existing + 5 new), typecheck clean with no `WARN Duplicated imports`.
+Expected: 211 tests passing across 8 files (206 existing + 5 new), typecheck clean with no `WARN Duplicated imports`. NOTE: CLAUDE.md claims "90 tests across 6 files" and is stale — it predates `plex.spec.ts` (35 tests). Trust the runner, not the doc.
 
 - [ ] **Step 6: Commit**
 
@@ -857,7 +857,7 @@ no auth changes.
 
 ## Verification
 
-- `npm test` (95 tests) and `npm run typecheck` pass
+- `npm test` (211 tests) and `npm run typecheck` pass
 - Production build checked for `src="/_nuxt/` on every prerendered route, because
   a broken shell returns 200 and an HTTP check cannot catch it
 - No horizontal scroll at 390x844 on `/dashboard`, `/shared`, `/settings`, `/login`

@@ -4,6 +4,21 @@ import { getCookie, setCookie, deleteCookie } from 'h3'
 import { getSessionByToken, getUserById, createSession, SESSION_TTL_SECONDS, type User } from './db'
 
 export const SESSION_COOKIE = 'sb_session'
+
+// Tautulli cannot hold a session cookie, so the webhook authenticates with a shared
+// secret that syncSeenrWebhook writes into the notifier's headers.
+export const WEBHOOK_SECRET_HEADER = 'x-seenr-bridge-secret'
+
+/** True when `expected` is '' — an install whose notifier predates authentication
+ *  must keep working until it re-syncs. */
+export function webhookSecretValid(provided: string | undefined, expected: string): boolean {
+  if (!expected) return true
+  if (!provided) return false
+  const a = Buffer.from(provided)
+  const b = Buffer.from(expected)
+  return a.length === b.length && crypto.timingSafeEqual(a, b)
+}
+
 // Derived from the same constant the DB uses to expire session rows
 // (server/utils/db.ts), so the cookie's Max-Age and the server-side window
 // cannot drift apart.

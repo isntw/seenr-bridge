@@ -3,18 +3,12 @@ import { getMetadata } from './tautulli'
 import { sendToAll, type SendResult } from './push'
 import type { IncomingEvent, TautulliMetadata } from '../../shared/types'
 
-/** Tautulli fires `play` on every play, and some clients fire it more than once for
- *  one press. Suppressing a repeat of the same (user, item) for this long keeps a
- *  paused-and-resumed film from buzzing twice. */
+// Tautulli fires `play` on every play, and some clients fire it twice for one press.
 const DEDUPE_WINDOW_MS = 30 * 60 * 1000
 
-/** In memory, not SQLite: this is ephemeral noise-suppression state, and losing it
- *  on restart costs at most one duplicate notification. Module-level is fine for
- *  that, unlike useDb()'s handle which must survive HMR re-evaluation. */
 const recent = new Map<string, number>()
 
-/** Exists so module state does not leak between spec files — the same reason
- *  resetLibraryRefreshCooldown() exists in tautulli.ts. */
+/** Keeps module state from leaking between spec files. */
 export function resetNotifyDedupe(): void {
   recent.clear()
 }
@@ -28,8 +22,6 @@ function seenRecently(username: string, ratingKey: string, now: number): boolean
   const last = recent.get(key)
   if (last !== undefined && now - last < DEDUPE_WINDOW_MS) return true
 
-  // Opportunistic prune, same shape as insertEvent's row trim: expired entries go
-  // on the next write rather than needing a timer.
   for (const [k, ts] of recent) {
     if (now - ts >= DEDUPE_WINDOW_MS) recent.delete(k)
   }
@@ -56,19 +48,9 @@ export interface NotifyResult {
   send?: SendResult
 }
 
-/** Handle a playback-start webhook: notify, never scrobble.
- *
- *  Deliberately NOT part of processEvent(). That function returns before its
- *  metadata lookup when the user has no mapping and nothing is pending —
- *
- *    if (!triggerUsable && !pendingByKey.length) return { skipped: true, ... }
- *
- *  — which is exactly the housemate this feature exists for: someone with no seenr
- *  account of their own, whose watch you still want to count for a co-watcher.
- *
- *  It also writes no `events` row. That table is capped at 1000 and trimmed on every
- *  insert, so a row per play would flush real scrobbles out roughly twice as fast and
- *  fill the Dashboard with non-scrobbles. */
+/** Notify, never scrobble. Separate from processEvent() because that returns before
+ *  its metadata lookup for an unmapped user, who is exactly who this is for. Writes no
+ *  events row: that table is capped at 1000 and trimmed on every insert. */
 export async function handlePlaybackStart(
   input: IncomingEvent,
   opts: { now?: number } = {},
@@ -80,7 +62,7 @@ export async function handlePlaybackStart(
   if (!settings.tautulli_url || !settings.tautulli_apikey)
     return { notified: false, reason: 'Tautulli connection not configured' }
 
-  // Empty means nobody here, unlike settings.libraries where empty means all.
+  // Empty means nobody, unlike settings.libraries where empty means all.
   const watched = parseNotifyUsers(settings.notify_users)
   if (!watched.some((u) => u.toLowerCase() === input.username.toLowerCase()))
     return { notified: false, reason: `Not notifying for "${input.username}"` }
@@ -98,8 +80,6 @@ export async function handlePlaybackStart(
     }
   }
 
-  // Same library gate the pipeline applies, so a section you deselected does not
-  // notify either. Empty means every library, matching parseLibraries' contract.
   const allowed = parseLibraries(settings.libraries)
   if (allowed.length && !allowed.includes(String(meta.section_id ?? ''))) {
     const where = meta.library_name || `section ${meta.section_id ?? '?'}`

@@ -1,6 +1,7 @@
 // Minimal Tautulli API client. Used to look up an item's REAL external IDs by
 // rating_key — the piece the Tautulli webhook template cannot provide for episodes.
 
+import { WEBHOOK_SECRET_HEADER } from './auth'
 import type { ActivitySession, TautulliMetadata, LibraryItem, LibraryChild } from '../../shared/types'
 
 // Tautulli wraps every response in the same envelope; only the `data` shape
@@ -146,7 +147,7 @@ export async function syncSeenrWebhook(
   url: string,
   apiKey: string,
   webhookUrl: string,
-  opts: { triggers?: string[] } = {}
+  opts: { triggers?: string[]; secret?: string } = {}
 ): Promise<{ notifier_id: number; created: boolean }> {
   const triggers = opts.triggers && opts.triggers.length ? opts.triggers : ['watched']
   const notifiers = await tautulliApi<TautulliNotifier[]>(url, apiKey, 'get_notifiers')
@@ -166,7 +167,10 @@ export async function syncSeenrWebhook(
   }
 
   const jsonData = JSON.stringify({ action: '{action}', rating_key: '{rating_key}', username: '{username}' })
-  const jsonHeaders = JSON.stringify({ 'Content-Type': 'application/json' })
+  const jsonHeaders = JSON.stringify({
+    'Content-Type': 'application/json',
+    ...(opts.secret ? { [WEBHOOK_SECRET_HEADER]: opts.secret } : {}),
+  })
 
   const params: Record<string, string> = {
     notifier_id: String(notifier_id),

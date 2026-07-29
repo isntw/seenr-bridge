@@ -1,4 +1,4 @@
-import { getSettings } from '../../utils/db'
+import { ensureWebhookSecret, getSettings } from '../../utils/db'
 import { syncSeenrWebhook } from '../../utils/tautulli'
 import type { SyncResult } from '../../../shared/types'
 
@@ -25,7 +25,12 @@ export default defineEventHandler(async (event): Promise<SyncResult> => {
     : undefined
 
   try {
-    const r = await syncSeenrWebhook(s.tautulli_url, s.tautulli_apikey, webhookUrl, { triggers })
+    // Created here so the secret starts existing in the same action that writes it
+    // into Tautulli, never leaving the endpoint demanding a header nobody sends.
+    const r = await syncSeenrWebhook(s.tautulli_url, s.tautulli_apikey, webhookUrl, {
+      triggers,
+      secret: ensureWebhookSecret(),
+    })
     return { ok: true, webhookUrl, ...r }
   } catch (e: unknown) {
     throw createError({

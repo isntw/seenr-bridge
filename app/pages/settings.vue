@@ -86,6 +86,16 @@ const notifyEnabled = computed({
 
 const notifyUsers = computed(() => store.settings?.notify_users ?? [])
 
+const auth = useAuthStore()
+
+const ownNames = computed(() =>
+  [auth.username, auth.plexUsername].filter(Boolean).map((n) => String(n).toLowerCase()),
+)
+
+const otherUsers = computed(() =>
+  store.tautulliUsers.filter((u) => !ownNames.value.includes(u.toLowerCase())),
+)
+
 function toggleNotifyUser(username: string, on: boolean) {
   const next = on
     ? [...notifyUsers.value, username]
@@ -97,9 +107,9 @@ function toggleNotifyUser(username: string, on: boolean) {
 }
 
 const notifySummary = computed(() => {
-  if (!notifyUsers.value.length) return 'nobody selected'
-  const who = notifyUsers.value.join(', ')
-  return notifyEnabled.value ? who : `${who} · paused`
+  if (!notifyEnabled.value) return 'off'
+  const who = notifyUsers.value.length ? `you + ${notifyUsers.value.join(', ')}` : 'you only'
+  return who
 })
 
 async function sendTestPush() {
@@ -246,12 +256,16 @@ const connStatus = computed<'ok' | 'bad' | 'pending'>(() =>
 const connStatusText = computed(() =>
   status.tautulli === null ? 'checking…' : status.tautulli.ok ? 'connected' : 'unreachable',
 )
-const hookStatus = computed<'ok' | 'bad' | 'pending'>(() =>
-  status.tautulli === null ? 'pending' : status.webhook ? 'ok' : 'bad',
-)
-const hookStatusText = computed(() =>
-  status.tautulli === null ? 'checking…' : status.webhook ? 'active' : 'not set up',
-)
+const hookStatus = computed<'ok' | 'warn' | 'bad' | 'pending'>(() => {
+  if (status.tautulli === null) return 'pending'
+  if (!status.webhook) return 'bad'
+  return status.webhookSecured ? 'ok' : 'warn'
+})
+const hookStatusText = computed(() => {
+  if (status.tautulli === null) return 'checking…'
+  if (!status.webhook) return 'not set up'
+  return status.webhookSecured ? 'active' : 'unauthenticated'
+})
 
 async function saveConnection() {
   saving.value = true
@@ -1009,18 +1023,19 @@ async function runTest(dryRun: boolean) {
       :summary="notifySummary"
     >
       <div class="space-y-1">
-        <p class="text-sm font-medium text-highlighted">Notify me when these people start watching</p>
+        <p class="text-sm font-medium text-highlighted">Who to be notified about</p>
         <p class="text-xs text-dimmed">
-          Tap the notification to count their watch for someone — useful when you sit down together.
+          Your own playback always notifies you. Add anyone you watch with, then tap the
+          notification to count their watch for someone.
         </p>
       </div>
 
-      <div v-if="!store.tautulliUsers.length" class="text-xs text-dimmed">
-        No Tautulli users found yet — check the connection above.
+      <div v-if="!otherUsers.length" class="text-xs text-dimmed">
+        No other Tautulli users found — check the connection above.
       </div>
       <div v-else class="flex flex-wrap gap-2" role="group" aria-label="People to be notified about">
         <UButton
-          v-for="u in store.tautulliUsers"
+          v-for="u in otherUsers"
           :key="u"
           :color="notifyUsers.includes(u) ? 'primary' : 'neutral'"
           :variant="notifyUsers.includes(u) ? 'subtle' : 'outline'"
@@ -1043,11 +1058,6 @@ async function runTest(dryRun: boolean) {
       </div>
 
       <USeparator />
-
-      <div class="space-y-1">
-        <p class="text-sm font-medium text-highlighted">This device</p>
-        <p class="text-xs text-dimmed">Each phone or browser opts in separately.</p>
-      </div>
 
       <UAlert
         v-if="push.state.value === 'insecure'"
@@ -1082,9 +1092,12 @@ async function runTest(dryRun: boolean) {
         description="You declined the permission prompt for this site. Re-allow notifications in your browser's site settings, then reload."
       />
       <div v-else class="flex items-center justify-between gap-4">
-        <p class="min-w-0 text-sm text-muted">
-          {{ push.state.value === 'subscribed' ? 'This device is receiving them.' : 'This device is not receiving them yet.' }}
-        </p>
+        <div class="min-w-0">
+          <p class="text-sm font-medium text-highlighted">This device</p>
+          <p class="mt-0.5 text-xs text-dimmed">
+            {{ push.state.value === 'subscribed' ? 'Receiving notifications.' : 'Each phone or browser opts in separately.' }}
+          </p>
+        </div>
         <UButton
           :loading="push.busy.value"
           :color="push.state.value === 'subscribed' ? 'neutral' : 'primary'"
@@ -1098,7 +1111,18 @@ async function runTest(dryRun: boolean) {
       <template v-if="push.devices.value.length">
         <USeparator />
         <div class="space-y-3">
-          <p class="text-xs uppercase tracking-wider text-dimmed">Subscribed devices</p>
+          <div class="flex items-center justify-between gap-3">
+            <p class="text-xs uppercase tracking-wider text-dimmed">Subscribed devices</p>
+            <UButton
+              :loading="testingPush"
+              color="neutral"
+              variant="subtle"
+              size="xs"
+              label="Send a test"
+              icon="i-lucide-send"
+              @click="sendTestPush"
+            />
+          </div>
           <div
             v-for="d in push.devices.value"
             :key="d.id"
@@ -1123,17 +1147,6 @@ async function runTest(dryRun: boolean) {
               />
             </div>
           </div>
-        </div>
-        <div class="flex sm:justify-end">
-          <UButton
-            :loading="testingPush"
-            color="neutral"
-            variant="subtle"
-            label="Send a test"
-            icon="i-lucide-send"
-            class="w-full justify-center sm:w-auto"
-            @click="sendTestPush"
-          />
         </div>
       </template>
     </DisclosureCard>

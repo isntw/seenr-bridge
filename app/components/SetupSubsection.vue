@@ -1,7 +1,7 @@
 <script setup lang="ts">
 defineProps<{
   label: string
-  status?: 'ok' | 'bad' | 'pending' | null
+  status?: 'ok' | 'warn' | 'bad' | 'pending' | null
   statusText?: string
   seam?: boolean
   collapsible?: boolean
@@ -33,7 +33,7 @@ defineProps<{
             <h3 class="text-xs font-semibold uppercase tracking-wider text-muted">{{ label }}</h3>
             <UBadge
               v-if="status && statusText"
-              :color="status === 'ok' ? 'success' : status === 'bad' ? 'error' : 'neutral'"
+              :color="status === 'ok' ? 'success' : status === 'warn' ? 'warning' : status === 'bad' ? 'error' : 'neutral'"
               variant="subtle"
               size="sm"
               :label="statusText"
@@ -57,7 +57,7 @@ defineProps<{
         <h3 class="text-xs font-semibold uppercase tracking-wider text-muted">{{ label }}</h3>
         <UBadge
           v-if="status && statusText"
-          :color="status === 'ok' ? 'success' : status === 'bad' ? 'error' : 'neutral'"
+          :color="status === 'ok' ? 'success' : status === 'warn' ? 'warning' : status === 'bad' ? 'error' : 'neutral'"
           variant="subtle"
           size="sm"
           :label="statusText"

@@ -11,6 +11,7 @@ export const useAuthStore = defineStore('auth', () => {
   const plexLogin = ref(false)
   // False for an account created by signing in with Plex, which never had one.
   const hasPassword = ref(true)
+  const plexUsername = ref<string | null>(null)
   const ready = ref(false)
 
   function apply(s: AuthStatus) {
@@ -21,6 +22,7 @@ export const useAuthStore = defineStore('auth', () => {
     // than clobbering it with a default.
     if (s.plexLogin !== undefined) plexLogin.value = s.plexLogin
     if (s.hasPassword !== undefined) hasPassword.value = s.hasPassword
+    if (s.plexUsername !== undefined) plexUsername.value = s.plexUsername
   }
 
   async function fetchStatus() {
@@ -72,7 +74,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   return {
-    authenticated, username, needsSetup, plexLogin, hasPassword, ready,
+    authenticated, username, needsSetup, plexLogin, hasPassword, plexUsername, ready,
     fetchStatus, login, register, logout, startPlexLogin, pollPlexLogin,
   }
 })

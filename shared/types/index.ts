@@ -81,6 +81,8 @@ export interface AuthStatus {
   /** Whether the login page should offer Plex sign-in. Only set by /api/auth/status —
    *  it describes what the login page can do, not anything about a session. */
   plexLogin?: boolean
+  /** The linked Plex username, if any. Only sent to an authenticated caller. */
+  plexUsername?: string | null
   /** Whether the signed-in account has a password at all. An account created by
    *  signing in with Plex has none, so the account menu must offer to SET one rather
    *  than asking for a current password it could never have. Only sent to an

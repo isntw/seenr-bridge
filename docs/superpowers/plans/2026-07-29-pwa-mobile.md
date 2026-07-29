@@ -14,7 +14,7 @@
 
 ## Global Constraints
 
-- **No new runtime or dev dependencies.** `package.json` must be unchanged except nothing at all. Icon rasterisation is one-off and local; the PNGs are committed artefacts.
+- **No new runtime or dev dependencies.** `package.json` and `package-lock.json` must be byte-identical at the end of the branch. Icon rasterisation is one-off and local; the PNGs are committed artefacts.
 - **No `@vite-pwa/nuxt`**, no Workbox, no offline caching, no precaching.
 - **The service worker must never have a `fetch` handler.** A worker that cannot intercept requests cannot serve a stale build — load-bearing in this repo, which prerenders one `index.html` per route.
 - **No auth changes.** The bridge stays single-account. No additions to `PUBLIC_API_PATHS`.

@@ -88,40 +88,90 @@ Two sources, not four, because the letterform at `font-size="300"` sits within a
 
 - [ ] **Step 3: Create the generator script**
 
-`tools/icons/generate.sh`. Not run by the build — it records the command so the PNGs can be regenerated. `qlmanage` is macOS-only, which is why the outputs are committed rather than generated in CI.
+`tools/icons/generate.py`. Not run by the build — the PNGs are committed artefacts.
 
-```bash
-#!/usr/bin/env bash
-# Regenerates the committed PWA icons from the SVG sources. macOS only
-# (qlmanage); the PNGs are committed so no build or CI step needs this.
-set -euo pipefail
-cd "$(dirname "$0")"
-out=../../public
+**`qlmanage` alone cannot produce the rounded icons.** It is a QuickLook thumbnailer, and it flattens an SVG's transparent background onto opaque white — so rendering `icon.svg` directly yields a white square with a rounded gradient inside, which looks broken on any dark surface. The rounded PNGs are therefore rasterised **full-bleed from `icon-square.svg`** and given an antialiased rounded-rect alpha channel in Pillow. The corner radius is read out of `icon.svg` rather than duplicated, so the two cannot drift.
 
-render() { # <source.svg> <size> <dest.png>
-  qlmanage -t -s "$2" -o . "$1" >/dev/null 2>&1
-  mv "$1.png" "$out/$3"
-}
+Pillow is **not** a project dependency and must not be added to `package.json`; it is installed into a throwaway venv, exactly as `qlmanage` is a local tool rather than a dependency.
 
-render icon.svg        192 icon-192.png
-render icon.svg        512 icon-512.png
-render icon-square.svg 512 icon-maskable-512.png
-render icon-square.svg 180 apple-touch-icon.png
-cp icon.svg "$out/favicon.svg"
+```python
+#!/usr/bin/env python3
+"""Regenerates the committed PWA icons from the SVG sources.
 
-echo "wrote:"
-for f in icon-192.png icon-512.png icon-maskable-512.png apple-touch-icon.png favicon.svg; do
-  echo "  public/$f"
-done
+Needs macOS (qlmanage) and Pillow, neither of which is a project dependency:
+
+    python3 -m venv /tmp/icons-venv
+    /tmp/icons-venv/bin/pip install pillow
+    /tmp/icons-venv/bin/python tools/icons/generate.py
+"""
+import re
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+from PIL import Image, ImageDraw
+
+HERE = Path(__file__).resolve().parent
+PUBLIC = HERE.parent.parent / 'public'
+SQUARE = HERE / 'icon-square.svg'
+ROUNDED = HERE / 'icon.svg'
+VIEWBOX = 512
+# Single source of truth for the corner radius: whatever icon.svg draws.
+RX = float(re.search(r'rx="([\d.]+)"', ROUNDED.read_text()).group(1))
+
+
+def rasterise(svg: Path, size: int) -> Image.Image:
+    """qlmanage writes <name>.png beside the source; render, load, clean up."""
+    subprocess.run(['qlmanage', '-t', '-s', str(size), '-o', str(HERE), str(svg)],
+                   check=True, capture_output=True)
+    tmp = HERE / f'{svg.name}.png'
+    im = Image.open(tmp).convert('RGBA')
+    im.load()
+    tmp.unlink()
+    if im.size != (size, size):
+        sys.exit(f'qlmanage produced {im.size} for {svg.name}, wanted {size}x{size}')
+    return im
+
+
+def round_corners(im: Image.Image) -> Image.Image:
+    size = im.width
+    ss = 4  # supersample the mask so its edge is antialiased, not jagged
+    mask = Image.new('L', (size * ss, size * ss), 0)
+    ImageDraw.Draw(mask).rounded_rectangle(
+        [0, 0, size * ss - 1, size * ss - 1],
+        radius=RX / VIEWBOX * size * ss, fill=255)
+    im.putalpha(mask.resize((size, size), Image.LANCZOS))
+    return im
+
+
+def write(im: Image.Image, name: str) -> None:
+    path = PUBLIC / name
+    im.save(path, optimize=True)
+    print(f'  public/{name:<24} {path.stat().st_size:>7} bytes  {im.width}x{im.height}'
+          f'  mode={im.mode}')
+
+
+print('writing:')
+for size in (192, 512):
+    write(round_corners(rasterise(SQUARE, size)), f'icon-{size}.png')
+# Full-bleed and deliberately opaque: iOS and Android apply their own mask, so
+# these carry no alpha channel at all.
+write(rasterise(SQUARE, 512).convert('RGB'), 'icon-maskable-512.png')
+write(rasterise(SQUARE, 180).convert('RGB'), 'apple-touch-icon.png')
+shutil.copy(ROUNDED, PUBLIC / 'favicon.svg')
+print(f'  public/{"favicon.svg":<24} {(PUBLIC / "favicon.svg").stat().st_size:>7} bytes')
 ```
 
 - [ ] **Step 4: Run the generator**
 
 ```bash
-chmod +x tools/icons/generate.sh && ./tools/icons/generate.sh
+python3 -m venv /tmp/icons-venv
+/tmp/icons-venv/bin/pip -q install pillow
+/tmp/icons-venv/bin/python tools/icons/generate.py
 ```
 
-Expected: five lines listing the written files.
+Expected: five lines. `icon-192.png` and `icon-512.png` report `mode=RGBA`; `icon-maskable-512.png` and `apple-touch-icon.png` report `mode=RGB`.
 
 - [ ] **Step 5: Verify every PNG has the exact expected dimensions**
 
@@ -135,7 +185,26 @@ for f in icon-192.png:192 icon-512.png:512 icon-maskable-512.png:512 apple-touch
 done
 ```
 
-Expected: four lines, all `OK`. If `qlmanage` silently produced nothing the script's `mv` would already have failed — but check anyway, because a wrong-sized icon makes an install look broken rather than fail outright.
+Expected: four lines, all `OK`. The generator already exits non-zero on a size mismatch, but check anyway — a wrong-sized icon makes an install look broken rather than fail outright.
+
+- [ ] **Step 5b: Verify corner transparency**
+
+This is the check whose absence let a broken icon ship once already: dimensions and file size were both correct while the corners were opaque white. Assert the alpha channel directly.
+
+```bash
+/tmp/icons-venv/bin/python - <<'PY'
+from PIL import Image
+want = {'icon-192.png': 0, 'icon-512.png': 0,
+        'icon-maskable-512.png': 255, 'apple-touch-icon.png': 255}
+for name, expect in want.items():
+    im = Image.open(f'public/{name}').convert('RGBA')
+    got = im.getpixel((0, 0))[3]
+    print(f'{name:<24} corner alpha={got:<4} want={expect:<4} '
+          f'{"OK" if got == expect else "WRONG"}')
+PY
+```
+
+Expected: four lines, all `OK`. The two rounded icons must be fully transparent at the corner (`alpha=0`); the two full-bleed icons must be fully opaque (`alpha=255`).
 
 - [ ] **Step 6: Confirm the favicon shrank and is real vector**
 

@@ -68,6 +68,15 @@ export interface Status {
   users: number
 }
 
+/** One device subscribed to push. Never carries the endpoint or its keys. */
+export interface PushDevice {
+  id: number
+  label: string
+  created: number
+  last_ok: number | null
+  fail_count: number
+}
+
 export interface AuthStatus {
   authenticated: boolean
   username: string | null

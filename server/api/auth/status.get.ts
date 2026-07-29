@@ -9,6 +9,6 @@ export default defineEventHandler((event): AuthStatus => {
     username: user?.username ?? null,
     needsSetup: countUsers() === 0,
     plexLogin: plexLoginAvailable(),
-    ...(user ? { hasPassword: !!user.password_hash } : {}),
+    ...(user ? { hasPassword: !!user.password_hash, plexUsername: user.plex_username } : {}),
   }
 })

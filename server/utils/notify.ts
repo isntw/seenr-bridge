@@ -1,4 +1,4 @@
-import { getSettings, parseNotifyUsers } from './db'
+import { firstUser, getSettings, parseNotifyUsers } from './db'
 import { libraryGateReason } from './pipeline'
 import { getMetadata } from './tautulli'
 import { sendToAll, type SendResult } from './push'
@@ -41,6 +41,19 @@ function detail(m: TautulliMetadata): string {
   return String(m.year || '')
 }
 
+export function ownerNames(): string[] {
+  const u = firstUser()
+  return [u?.username, u?.plex_username]
+    .filter((n): n is string => !!n)
+    .map((n) => n.toLowerCase())
+}
+
+export function notifiesFor(username: string, storedUsers: string): boolean {
+  const wanted = username.toLowerCase()
+  if (ownerNames().includes(wanted)) return true
+  return parseNotifyUsers(storedUsers).some((u) => u.toLowerCase() === wanted)
+}
+
 export interface NotifyResult {
   notified: boolean
   reason?: string
@@ -58,8 +71,7 @@ export async function handlePlaybackStart(
   if (!settings.tautulli_url || !settings.tautulli_apikey)
     return { notified: false, reason: 'Tautulli connection not configured' }
 
-  const watched = parseNotifyUsers(settings.notify_users)
-  if (!watched.some((u) => u.toLowerCase() === input.username.toLowerCase()))
+  if (!notifiesFor(input.username, settings.notify_users))
     return { notified: false, reason: `Not notifying for "${input.username}"` }
 
   if (seenRecently(input.username, input.rating_key, now))

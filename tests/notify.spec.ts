@@ -123,6 +123,48 @@ describe('handlePlaybackStart', () => {
     expect(sendToAll).not.toHaveBeenCalled()
   })
 
+  it('notifies for the signed-in account without it being listed', async () => {
+    const { db, notify } = await load()
+    db.createUser('isntw', 'x:y')
+    enable(db, [])
+
+    const r = await notify.handlePlaybackStart({ ...play, username: 'isntw' })
+
+    expect(r.notified).toBe(true)
+    expect(sendToAll).toHaveBeenCalledTimes(1)
+  })
+
+  it('matches the signed-in account case-insensitively', async () => {
+    const { db, notify } = await load()
+    db.createUser('IsntW', 'x:y')
+    enable(db, [])
+
+    const r = await notify.handlePlaybackStart({ ...play, username: 'isntw' })
+
+    expect(r.notified).toBe(true)
+  })
+
+  it('notifies for the linked Plex username too', async () => {
+    const { db, notify } = await load()
+    db.createUserFromPlex('bridge-admin', { id: '1', username: 'plexguy', thumb: '' })
+    enable(db, [])
+
+    const r = await notify.handlePlaybackStart({ ...play, username: 'plexguy' })
+
+    expect(r.notified).toBe(true)
+  })
+
+  it('still ignores a stranger when an account exists', async () => {
+    const { db, notify } = await load()
+    db.createUser('isntw', 'x:y')
+    enable(db, [])
+
+    const r = await notify.handlePlaybackStart({ ...play, username: 'someoneelse' })
+
+    expect(r.notified).toBe(false)
+    expect(sendToAll).not.toHaveBeenCalled()
+  })
+
   it('ignores a user who is not listed', async () => {
     const { db, notify } = await load()
     enable(db, ['bob'])

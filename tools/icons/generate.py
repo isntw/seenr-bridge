@@ -18,6 +18,7 @@ from PIL import Image, ImageDraw
 HERE = Path(__file__).resolve().parent
 PUBLIC = HERE.parent.parent / 'public'
 SQUARE = HERE / 'icon-square.svg'
+BADGE = HERE / 'icon-badge.svg'
 ROUNDED = HERE / 'icon.svg'
 VIEWBOX = 512
 # Single source of truth for the corner radius: whatever icon.svg draws.
@@ -48,6 +49,16 @@ def round_corners(im: Image.Image) -> Image.Image:
     return im
 
 
+def badge(im: Image.Image) -> Image.Image:
+    # Android paints the alpha channel of a notification badge with its own accent
+    # colour and discards the rest, so the glyph has to BE the alpha. qlmanage
+    # flattens transparency onto white, hence a black-on-white source inverted here.
+    mask = im.convert('L').point(lambda v: 255 - v)
+    out = Image.new('RGBA', im.size, (255, 255, 255, 0))
+    out.putalpha(mask)
+    return out
+
+
 def write(im: Image.Image, name: str) -> None:
     path = PUBLIC / name
     im.save(path, optimize=True)
@@ -62,5 +73,6 @@ for size in (192, 512):
 # these carry no alpha channel at all.
 write(rasterise(SQUARE, 512).convert('RGB'), 'icon-maskable-512.png')
 write(rasterise(SQUARE, 180).convert('RGB'), 'apple-touch-icon.png')
+write(badge(rasterise(BADGE, 96)), 'badge-96.png')
 shutil.copy(ROUNDED, PUBLIC / 'favicon.svg')
 print(f'  public/{"favicon.svg":<24} {(PUBLIC / "favicon.svg").stat().st_size:>7} bytes')

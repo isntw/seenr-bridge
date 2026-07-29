@@ -13,7 +13,7 @@ self.addEventListener('push', (event) => {
     self.registration.showNotification(p.title || 'Seenr Bridge', {
       body: p.body || '',
       icon: '/icon-192.png',
-      badge: '/icon-192.png',
+      badge: '/badge-96.png',
       tag: p.tag || 'seenr-bridge',
       data: { url: p.url || '/dashboard' },
     }),

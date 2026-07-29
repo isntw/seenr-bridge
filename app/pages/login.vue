@@ -1,13 +1,10 @@
 <script setup lang="ts">
-const route = useRoute()
-
-function afterLogin() {
-  const r = typeof route.query.redirect === 'string' ? route.query.redirect : ''
-  return r.startsWith('/') && !r.startsWith('//') ? r : '/dashboard'
-}
-
 import { VERSION } from '../../shared/version'
 import { apiErrorMessage } from '../../shared/errors'
+import { safeRedirect } from '../utils/safe-redirect'
+
+const route = useRoute()
+const afterLogin = () => safeRedirect(route.query.redirect)
 
 definePageMeta({ layout: false })
 

@@ -1,3 +1,5 @@
+import { safeRedirect } from '../utils/safe-redirect'
+
 export default defineNuxtRouteMiddleware(async (to) => {
   const auth = useAuthStore()
 
@@ -7,7 +9,6 @@ export default defineNuxtRouteMiddleware(async (to) => {
     return navigateTo(to.fullPath === '/' ? '/login' : `/login?redirect=${encodeURIComponent(to.fullPath)}`)
   }
   if (auth.authenticated && to.path === '/login') {
-    const redirect = typeof to.query.redirect === 'string' ? to.query.redirect : ''
-    return navigateTo(redirect.startsWith('/') && !redirect.startsWith('//') ? redirect : '/dashboard')
+    return navigateTo(safeRedirect(to.query.redirect))
   }
 })

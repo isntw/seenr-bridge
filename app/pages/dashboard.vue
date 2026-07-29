@@ -5,6 +5,23 @@ import type {
 
 const limit = ref(25)
 
+const route = useRoute()
+const router = useRouter()
+
+const focus = computed(() => {
+  const rating_key = String(route.query.watch ?? '')
+  const username = String(route.query.user ?? '')
+  return rating_key && username ? { rating_key, username } : null
+})
+
+// Cleared once the dialog is open so a reload doesn't reopen it.
+function clearFocus() {
+  const q = { ...route.query }
+  delete q.watch
+  delete q.user
+  router.replace({ query: q })
+}
+
 const { data: stats, refresh: refreshStats, status: statsStatus } = useAsyncData<Stats>(
   'stats',
   () => $fetch('/api/stats'),
@@ -92,7 +109,9 @@ const remaining = computed(() =>
       :mappings="mappings ?? []"
       :shares="shares ?? []"
       :pending="pending ?? []"
+      :focus="focus"
       @changed="refreshWatchTogether()"
+      @focused="clearFocus()"
     />
 
     <UCard :ui="{ body: 'p-0 sm:p-0' }">

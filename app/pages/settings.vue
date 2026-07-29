@@ -36,6 +36,66 @@ function toggleTrigger(key: string, checked: boolean) {
   }
 }
 
+const push = usePush()
+const testingPush = ref(false)
+
+onMounted(() => {
+  push.refresh()
+  $fetch<{ header: string; secret: string }>('/api/tautulli/webhook-secret')
+    .then((r) => (webhookSecret.value = r.secret))
+    .catch(() => {})
+})
+
+const webhookSecret = ref('')
+
+// Reflects what a hand-configured notifier must send. Without the secret a manual
+// setup would 401 as soon as one exists.
+const webhookHeaders = computed(() =>
+  JSON.stringify({
+    'Content-Type': 'application/json',
+    ...(webhookSecret.value ? { 'X-Seenr-Bridge-Secret': webhookSecret.value } : {}),
+  }),
+)
+
+const notifyEnabled = computed({
+  get: () => !!store.settings?.notify_enabled,
+  set: (v: boolean) => {
+    // Notifications ride the `play` trigger, so turning them on queues it for the
+    // next sync rather than leaving the feature silently inert.
+    if (v && !selectedTriggers.value.includes('play')) selectedTriggers.value.push('play')
+    store.save({ notify_enabled: v }).catch((e) =>
+      toast.add({ title: apiErrorMessage(e, 'Could not save'), color: 'error' }),
+    )
+  },
+})
+
+const notifyUsers = computed(() => store.settings?.notify_users ?? [])
+
+function toggleNotifyUser(username: string, on: boolean) {
+  const next = on
+    ? [...notifyUsers.value, username]
+    : notifyUsers.value.filter((u) => u !== username)
+  store.save({ notify_users: next }).catch((e) =>
+    toast.add({ title: apiErrorMessage(e, 'Could not save'), color: 'error' }),
+  )
+}
+
+async function sendTestPush() {
+  testingPush.value = true
+  try {
+    const r = await push.test()
+    toast.add({
+      title: r.sent ? `Test sent to ${r.sent} device${r.sent === 1 ? '' : 's'}` : 'Nothing was sent',
+      description: r.pruned ? `${r.pruned} dead subscription removed` : undefined,
+      color: r.sent ? 'success' : 'warning',
+    })
+  } catch (e) {
+    toast.add({ title: apiErrorMessage(e, 'Test failed'), color: 'error' })
+  } finally {
+    testingPush.value = false
+  }
+}
+
 const saving = ref(false)
 const syncing = ref(false)
 const newUser = ref('')
@@ -701,7 +761,7 @@ async function runTest(dryRun: boolean) {
             <div class="space-y-4 pt-2">
               <CopyField label="Webhook URL" :value="webhookUrl" />
               <CopyField label="Method" value="POST" />
-              <CopyField label="Headers" :value="'{&quot;Content-Type&quot;: &quot;application/json&quot;}'" />
+              <CopyField label="Headers" :value="webhookHeaders" />
               <CopyField
                 label="JSON body"
                 :value="'{&quot;action&quot;: &quot;{action}&quot;, &quot;rating_key&quot;: &quot;{rating_key}&quot;, &quot;username&quot;: &quot;{username}&quot;}'"
@@ -900,6 +960,140 @@ async function runTest(dryRun: boolean) {
       <p class="mt-2 text-xs text-dimmed">
         Nothing reaches Plex until you turn on “Mark watched in Plex too” for a shared title.
       </p>
+    </SetupStep>
+
+    <SetupStep
+      :n="4"
+      title="Notifications"
+      badge="optional"
+      hint="get a push when someone starts watching, and count it for a co-watcher"
+    >
+      <UAlert
+        v-if="push.state.value === 'insecure'"
+        color="warning"
+        variant="subtle"
+        icon="i-lucide-shield-alert"
+        title="Needs HTTPS"
+        description="Browsers only allow notifications on a secure origin. Reach the bridge over HTTPS — a reverse proxy or a Cloudflare Tunnel — then come back."
+      />
+      <UAlert
+        v-else-if="push.state.value === 'needs-install'"
+        color="info"
+        variant="subtle"
+        icon="i-lucide-share"
+        title="Add to Home Screen first"
+        description="On iPhone and iPad, notifications only work once this is installed as an app. Tap Share, then “Add to Home Screen”, and open it from there."
+      />
+      <UAlert
+        v-else-if="push.state.value === 'unsupported'"
+        color="neutral"
+        variant="subtle"
+        icon="i-lucide-bell-off"
+        title="Not supported here"
+        description="This browser has no Web Push support. Try Chrome on Android, or an installed app on iOS 16.4+."
+      />
+      <UAlert
+        v-else-if="push.state.value === 'denied'"
+        color="error"
+        variant="subtle"
+        icon="i-lucide-bell-off"
+        title="Notifications are blocked"
+        description="You declined the permission prompt for this site. Re-allow notifications in your browser's site settings, then reload."
+      />
+
+      <template v-else>
+        <div class="flex items-start justify-between gap-4">
+          <div class="min-w-0">
+            <p class="text-sm font-medium text-highlighted">This device</p>
+            <p class="mt-0.5 text-xs text-dimmed">
+              {{ push.state.value === 'subscribed' ? 'Receiving notifications.' : 'Not receiving notifications yet.' }}
+            </p>
+          </div>
+          <UButton
+            :loading="push.busy.value"
+            :color="push.state.value === 'subscribed' ? 'neutral' : 'primary'"
+            :variant="push.state.value === 'subscribed' ? 'subtle' : 'solid'"
+            :label="push.state.value === 'subscribed' ? 'Turn off' : 'Turn on'"
+            class="shrink-0"
+            @click="push.state.value === 'subscribed' ? push.disable() : push.enable()"
+          />
+        </div>
+
+        <template v-if="push.devices.value.length">
+          <hr class="border-muted" />
+          <div class="space-y-2">
+            <p class="text-xs uppercase tracking-wider text-dimmed">Devices</p>
+            <div
+              v-for="d in push.devices.value"
+              :key="d.id"
+              class="flex items-center justify-between gap-3 text-sm"
+            >
+              <span class="min-w-0 truncate text-default">{{ d.label }}</span>
+              <div class="flex shrink-0 items-center gap-2">
+                <UBadge
+                  v-if="d.fail_count > 0"
+                  color="warning"
+                  variant="subtle"
+                  size="sm"
+                  :label="`${d.fail_count} failed`"
+                />
+                <UButton
+                  icon="i-lucide-x"
+                  color="neutral"
+                  variant="ghost"
+                  size="xs"
+                  :aria-label="`Remove ${d.label}`"
+                  @click="push.forget(d.id)"
+                />
+              </div>
+            </div>
+          </div>
+          <div class="flex sm:justify-end">
+            <UButton
+              :loading="testingPush"
+              color="neutral"
+              variant="subtle"
+              label="Send a test"
+              icon="i-lucide-send"
+              class="w-full justify-center sm:w-auto"
+              @click="sendTestPush"
+            />
+          </div>
+        </template>
+      </template>
+
+      <hr class="border-muted" />
+
+      <div class="flex items-start justify-between gap-4">
+        <div class="min-w-0">
+          <p class="text-sm font-medium text-highlighted">Notify on playback</p>
+          <p class="mt-0.5 text-xs text-dimmed">
+            Needs the <strong class="text-default">Play</strong> trigger on the webhook above, then a re-sync.
+          </p>
+        </div>
+        <USwitch v-model="notifyEnabled" class="shrink-0" />
+      </div>
+
+      <div v-if="notifyEnabled" class="space-y-2">
+        <p class="text-xs text-dimmed">
+          Whose playback should notify you? Nobody is selected by default.
+        </p>
+        <div v-if="!store.tautulliUsers.length" class="text-xs text-dimmed">
+          No Tautulli users found yet — check the connection above.
+        </div>
+        <div v-else class="flex flex-wrap gap-2" role="group" aria-label="Users to notify for">
+          <UButton
+            v-for="u in store.tautulliUsers"
+            :key="u"
+            :color="notifyUsers.includes(u) ? 'primary' : 'neutral'"
+            :variant="notifyUsers.includes(u) ? 'subtle' : 'outline'"
+            :leading-icon="notifyUsers.includes(u) ? 'i-lucide-check' : undefined"
+            :aria-pressed="notifyUsers.includes(u)"
+            :label="u"
+            @click="toggleNotifyUser(u, !notifyUsers.includes(u))"
+          />
+        </div>
+      </div>
     </SetupStep>
 
     <div class="flex items-center gap-3 pt-2">

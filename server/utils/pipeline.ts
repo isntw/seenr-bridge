@@ -9,6 +9,16 @@ import { forwardToSeenr } from './seenr'
 import { getPlexServer, markWatched, resolvePlexToken, type PlexServer } from './plex'
 import type { IncomingEvent, ProcessResult, BackfillResult, TautulliMetadata } from '../../shared/types'
 
+export function libraryGateReason(
+  settings: Pick<SettingsRow, 'libraries'>,
+  meta: Pick<TautulliMetadata, 'section_id' | 'library_name'>,
+): string | null {
+  const allowed = parseLibraries(settings.libraries)
+  if (!allowed.length || allowed.includes(String(meta.section_id ?? ''))) return null
+  const where = meta.library_name || `section ${meta.section_id ?? '?'}`
+  return `Library "${where}" is not selected in Settings`
+}
+
 function imageFor(meta: TautulliMetadata): string | null {
   return meta.media_type === 'episode' ? meta.grandparent_thumb || meta.thumb || null : meta.thumb || null
 }
@@ -192,11 +202,8 @@ export async function processEvent(
   // case above: that is Tautulli telling us about somebody the operator never
   // configured, whereas this is a rule the operator did configure — so a
   // mis-ticked library has to be visible on the Dashboard, or it is undiagnosable.
-  const allowed = parseLibraries(settings.libraries)
-  if (allowed.length && !allowed.includes(String(meta.section_id ?? ''))) {
-    const where = meta.library_name || `section ${meta.section_id ?? '?'}`
-    return skip(`Library "${where}" is not selected in Settings`, common)
-  }
+  const gate = libraryGateReason(settings, meta)
+  if (gate) return skip(gate, common)
 
   if (!settings.forward_enabled)
     return skip('Syncing is disabled in settings', common)

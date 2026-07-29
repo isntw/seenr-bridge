@@ -1,3 +1,3 @@
-import { vapidPublicKey } from '../../utils/push'
+import { ensureVapidKeys } from '../../utils/push'
 
-export default defineEventHandler(() => ({ key: vapidPublicKey() }))
+export default defineEventHandler(() => ({ key: ensureVapidKeys().publicKey }))

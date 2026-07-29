@@ -1,8 +1,12 @@
 import type { TautulliMetadata } from '../../shared/types'
 
 // Map a Tautulli notify action to the Plex webhook event name seenr expects.
+export function normalizeAction(action: string): string {
+  return (action || '').toLowerCase().replace(/^on_/, '')
+}
+
 export function mapEvent(action: string): string {
-  const a = (action || '').toLowerCase().replace(/^on_/, '')
+  const a = normalizeAction(action)
   switch (a) {
     case 'play': return 'media.play'
     case 'resume': return 'media.resume'

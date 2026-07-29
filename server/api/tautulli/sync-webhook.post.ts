@@ -3,9 +3,16 @@ import {
   getSettings,
   getWebhookSecret,
   setWebhookSecret,
+  type SettingsRow,
 } from '../../utils/db'
 import { syncSeenrWebhook } from '../../utils/tautulli'
 import type { SyncResult } from '../../../shared/types'
+
+function withRequiredTriggers(triggers: string[] | undefined, s: SettingsRow): string[] {
+  const chosen = triggers?.length ? [...triggers] : ['watched']
+  if (s.notify_enabled && !chosen.includes('play')) chosen.push('play')
+  return chosen
+}
 
 export default defineEventHandler(async (event): Promise<SyncResult> => {
   const s = getSettings()
@@ -32,11 +39,11 @@ export default defineEventHandler(async (event): Promise<SyncResult> => {
   try {
     const secret = getWebhookSecret() || generateWebhookSecret()
     const r = await syncSeenrWebhook(s.tautulli_url, s.tautulli_apikey, webhookUrl, {
-      triggers,
+      triggers: withRequiredTriggers(triggers, s),
       secret,
     })
     setWebhookSecret(secret)
-    return { ok: true, webhookUrl, ...r }
+    return { ok: true, webhookUrl, secret, ...r }
   } catch (e: unknown) {
     throw createError({
       statusCode: 500,

@@ -83,6 +83,10 @@ const ICON_PATH_PREFIX = '/api/_nuxt_icon/'
 // normalises real `..` but not its encoded form) while the router may decode it.
 const ICON_COLLECTION = /^[a-zA-Z0-9._-]+$/
 
+export function requiresWebhookSecret(path: string): boolean {
+  return path === '/api/webhook/tautulli'
+}
+
 // The middleware's full decision, extracted so it can be unit-tested without
 // constructing an H3Event. Non-/api/ paths pass through untouched (pages,
 // assets), public /api paths pass through unauthenticated, everything else

@@ -1,8 +1,5 @@
 import type { H3Event } from 'h3'
-import { processEvent } from '../../utils/pipeline'
-import { handlePlaybackStart } from '../../utils/notify'
-import { WEBHOOK_SECRET_HEADER, webhookSecretValid } from '../../utils/auth'
-import { getWebhookSecret } from '../../utils/db'
+import { handleIncoming } from '../../utils/dispatch'
 
 // Matches the legacy Express body-parser limit — generous for a payload of
 // three short fields (rating_key, username, action). This is the one
@@ -56,10 +53,6 @@ function rejectIfBodyTooLarge(event: H3Event): Promise<void> {
 }
 
 export default defineEventHandler(async (event) => {
-  if (!webhookSecretValid(getRequestHeader(event, WEBHOOK_SECRET_HEADER), getWebhookSecret())) {
-    throw createError({ statusCode: 401, statusMessage: 'Invalid or missing webhook secret' })
-  }
-
   // Start reading the body immediately (readBody caches its result on the
   // event), but don't look at it until the size guard has cleared — the
   // .catch() here means a destroyed connection never surfaces as an
@@ -86,14 +79,10 @@ export default defineEventHandler(async (event) => {
     username: String(username),
   }
 
-  const isPlaybackStart = incoming.action.toLowerCase().replace(/^on_/, '') === 'play'
-
   // Respond fast; enrich and forward in the background so Tautulli never
   // waits on the seenr round-trip. Failures are recorded to the events
   // table — that table is this endpoint's error log.
-  const work = (
-    isPlaybackStart ? handlePlaybackStart(incoming) : processEvent(incoming)
-  ).catch((err) => {
+  const work = handleIncoming(incoming).catch((err) => {
     // processEvent already records its own failures to the events table;
     // reaching this catch means that recording itself threw, so this is
     // the only place left to leave a trace.

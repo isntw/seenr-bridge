@@ -163,6 +163,7 @@ export interface SyncResult {
   notifier_id?: number
   created?: boolean
   error?: string
+  secret?: string
 }
 
 /** One Tautulli library section, for the Settings library chooser. */

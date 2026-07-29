@@ -860,10 +860,25 @@ no auth changes.
 - `npm test` (211 tests) and `npm run typecheck` pass
 - Production build checked for `src="/_nuxt/` on every prerendered route, because
   a broken shell returns 200 and an HTTP check cannot catch it
-- No horizontal scroll at 390x844 on `/dashboard`, `/shared`, `/settings`, `/login`
-- **Not verified from the dev machine:** the real install flow needs an HTTPS
-  origin. `ItemPicker` and `SharedTitleModal` were audited in their empty state
-  only, since the audit ran against a throwaway database with no Tautulli.
+- Manifest, service worker, icons and favicon all serve 200 from the built server,
+  and the head links them
+- Exactly one `viewport` meta, carrying `viewport-fit=cover`, so the safe-area
+  insets resolve non-zero
+- All three `env(safe-area-inset-*)` rules confirmed present in the compiled CSS
+
+**Not verified — stated plainly rather than implied:**
+
+- **No 390px layout measurement was taken.** The browser-driven audit was skipped
+  by decision. A static scan of `settings.vue`, `ItemPicker.vue`,
+  `SharedTitleModal.vue`, `EventRow.vue` and `shared.vue` found no fixed pixel
+  widths, no `whitespace-nowrap`, no `overflow-x` and no grids wider than four
+  columns, so there is no *known* breakage — but "no known breakage" is not
+  "measured and clean". Worth a look in DevTools' device toolbar before merge.
+- **The install flow was not exercised.** Installability requires a secure
+  context, so it cannot be tested over `http://<lan-ip>:8687`. Needs the
+  Cloudflare Tunnel.
+- **Safe-area insets were not seen rendering.** They are `0px` on any display
+  without a cut-out, so only a real notched device shows their effect.
 
 Design: `docs/superpowers/specs/2026-07-29-pwa-mobile-design.md`
 

@@ -14,9 +14,6 @@ function validate(raw: unknown): Partial<SettingsRow> {
     ? JSON.stringify(b.libraries.map(String))
     : undefined
 
-  // Same partial-PUT contract as libraries above. Note the stored empty array
-  // means "notify nobody", so a caller CAN legitimately clear the selection —
-  // unlike libraries, where empty means every library.
   const notify_users = Array.isArray(b.notify_users)
     ? JSON.stringify(b.notify_users.map(String))
     : undefined

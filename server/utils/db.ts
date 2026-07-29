@@ -139,9 +139,8 @@ CREATE TABLE IF NOT EXISTS pending_watches (
 );
 CREATE INDEX IF NOT EXISTS idx_pending_rating_key ON pending_watches (rating_key);
 
--- Web Push endpoints, one row per device that opted in. user_id is carried from
--- the start even though this panel has exactly one account, so multi-account
--- support would need no data migration here.
+-- user_id is carried even though this panel has one account, so multi-account
+-- support would need no migration here.
 CREATE TABLE IF NOT EXISTS push_subscriptions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
@@ -264,22 +263,15 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
   if (!cols('pending_watches').includes('plex_sync'))
     db.exec('ALTER TABLE pending_watches ADD COLUMN plex_sync INTEGER NOT NULL DEFAULT 0')
 
-  // Off by default: an upgrade must not start pushing notifications to a device
-  // nobody has opted in yet.
   if (!settingsCols.includes('notify_enabled'))
     db.exec('ALTER TABLE settings ADD COLUMN notify_enabled INTEGER NOT NULL DEFAULT 0')
-  // JSON array of Tautulli usernames whose playback raises a notification.
-  // Empty means NOBODY — deliberately the opposite of settings.libraries. That
-  // convention is safe because it only ever widens forwarding; this one
-  // interrupts the operator's phone, so it must stay opt-in. Same reasoning as
-  // shared_titles.plex_sync defaulting to 0.
+  // Empty means NOBODY, inverting settings.libraries: that only widens forwarding,
+  // this interrupts a phone.
   if (!settingsCols.includes('notify_users'))
     db.exec("ALTER TABLE settings ADD COLUMN notify_users TEXT NOT NULL DEFAULT ''")
 
-  // The VAPID keypair and the webhook secret are deliberately NOT part of
-  // SettingsRow: settingsToWire() spreads the row, so a column added there would
-  // be served to the browser. They are infrastructure state reached through the
-  // dedicated accessors below, exactly like plex_client_id.
+  // Kept off SettingsRow: settingsToWire() spreads the row, so a column there
+  // would be served to the browser. Same reason as plex_client_id.
   if (!settingsCols.includes('vapid_public'))
     db.exec("ALTER TABLE settings ADD COLUMN vapid_public TEXT NOT NULL DEFAULT ''")
   if (!settingsCols.includes('vapid_private'))
@@ -366,8 +358,7 @@ export function parseLibraries(raw: string | null | undefined): string[] {
   return parseStringArray(raw)
 }
 
-/** Usernames whose playback raises a notification. Shares parseLibraries' tolerance
- *  but NOT its meaning: an empty result here means nobody, not everybody. */
+/** Same tolerance as parseLibraries, opposite meaning: empty is nobody. */
 export function parseNotifyUsers(raw: string | null | undefined): string[] {
   return parseStringArray(raw)
 }
@@ -459,8 +450,6 @@ export function getPlexClientId(): string {
   return id
 }
 
-/** The stored VAPID pair, either half possibly ''. Generating it needs web-push, so
- *  that lives in server/utils/push.ts — this is only storage. Never on the wire. */
 export function getVapidKeys(): { publicKey: string; privateKey: string } {
   const row = useDb()
     .prepare('SELECT vapid_public, vapid_private FROM settings WHERE id = 1')
@@ -474,9 +463,8 @@ export function setVapidKeys(publicKey: string, privateKey: string): void {
     .run(publicKey, privateKey)
 }
 
-/** '' when the webhook is not yet authenticated. The handler enforces the header
- *  ONLY when this is non-empty, which is what lets an existing install keep
- *  working until its owner re-syncs the notifier. */
+/** '' means the endpoint is unauthenticated; the handler only enforces the header
+ *  when this is set, so an existing install keeps working until it re-syncs. */
 export function getWebhookSecret(): string {
   const row = useDb().prepare('SELECT webhook_secret FROM settings WHERE id = 1').get() as {
     webhook_secret: string
@@ -484,9 +472,6 @@ export function getWebhookSecret(): string {
   return row.webhook_secret
 }
 
-/** Read-or-create. Called when syncing the notifier, so the secret comes into
- *  existence in the same action that writes it into Tautulli's headers — there is
- *  never a moment where the bridge demands a header Tautulli isn't sending. */
 export function ensureWebhookSecret(): string {
   const existing = getWebhookSecret()
   if (existing) return existing
@@ -507,8 +492,6 @@ export interface PushSubscriptionRow {
   fail_count: number
 }
 
-/** Upsert on endpoint: a browser re-subscribing the same device must not create a
- *  duplicate row, and its keys can legitimately change when it does. */
 export function addPushSubscription(s: {
   user_id: number
   endpoint: string

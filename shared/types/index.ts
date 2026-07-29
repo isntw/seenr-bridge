@@ -10,8 +10,7 @@ export interface Settings {
   libraries: string[]
   plex_token: string
   notify_enabled: boolean
-  /** Tautulli usernames whose playback notifies. EMPTY MEANS NOBODY — the
-   *  opposite of `libraries`, because this one interrupts a phone. */
+  /** Usernames whose playback notifies. EMPTY MEANS NOBODY — opposite of `libraries`. */
   notify_users: string[]
 }
 
@@ -64,9 +63,7 @@ export interface Stats {
 export interface Status {
   tautulli: { ok: boolean; message: string }
   webhook: boolean
-  /** Whether a webhook secret exists, i.e. whether the endpoint requires the
-   *  header. Never the secret itself. False means the notifier predates
-   *  authentication and a re-sync would enable it. */
+  /** Whether the endpoint requires the secret header. Never the secret itself. */
   webhook_secured: boolean
   users: number
 }

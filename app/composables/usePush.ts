@@ -44,6 +44,13 @@ export function usePush() {
   const state = ref<PushState>('unsupported')
   const devices = ref<PushDevice[]>([])
   const busy = ref(false)
+  const ownFingerprint = ref('')
+
+  async function fingerprintOf(endpoint: string): Promise<string> {
+    const bytes = new TextEncoder().encode(endpoint)
+    const hash = await crypto.subtle.digest('SHA-256', bytes)
+    return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 16)
+  }
 
   async function currentSubscription(): Promise<PushSubscription | null> {
     if (!('serviceWorker' in navigator)) return null
@@ -71,6 +78,8 @@ export function usePush() {
     } catch {
       devices.value = []
     }
+    const sub = await currentSubscription()
+    ownFingerprint.value = sub ? await fingerprintOf(sub.endpoint) : ''
   }
 
   async function enable() {
@@ -138,5 +147,5 @@ export function usePush() {
     })
   }
 
-  return { state, devices, busy, refresh, enable, disable, forget, test }
+  return { state, devices, busy, ownFingerprint, refresh, enable, disable, forget, test }
 }

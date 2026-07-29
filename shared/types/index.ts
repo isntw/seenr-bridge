@@ -69,6 +69,9 @@ export interface Status {
 export interface PushDevice {
   id: number
   label: string
+  /** sha256 of the endpoint, truncated. Lets a browser recognise its own row
+   *  without the endpoint itself ever leaving the server. */
+  fingerprint: string
   created: number
   last_ok: number | null
   fail_count: number

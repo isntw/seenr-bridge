@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { EventGroup, EventRecipient } from '../utils/event-group'
+import { timeAgo as timeAgoOf } from '../utils/time-ago'
 
 const props = defineProps<{ group: EventGroup }>()
 const open = ref(false)
@@ -81,13 +82,7 @@ const plexState = computed(() => {
   return { label: `Plex ${failed} failed`, ok: false, title: `${failed} of ${attempted.length} Plex writes failed` }
 })
 
-const timeAgo = computed(() => {
-  const s = Math.floor((Date.now() - props.group.ts) / 1000)
-  if (s < 60) return `${s}s ago`
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
-  return new Date(props.group.ts).toLocaleDateString()
-})
+const timeAgo = computed(() => timeAgoOf(props.group.ts))
 
 function pretty(payload: string | null) {
   if (!payload) return '(no payload)'

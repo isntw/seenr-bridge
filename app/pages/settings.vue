@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Mapping, PlexLinkStatus, Settings, TestResult } from '../../shared/types'
 import { apiErrorMessage } from '../../shared/errors'
+import { timeAgo } from '../utils/time-ago'
 
 const store = useSettingsStore()
 const status = useStatusStore()
@@ -104,6 +105,25 @@ function toggleNotifyUser(username: string, on: boolean) {
     { notify_users: next },
     on ? `You'll be notified when ${username} starts watching.` : `Stopped notifying about ${username}.`,
   )
+}
+
+const DELIVERY = {
+  subscribed: 'Receiving notifications.',
+  available: 'Not receiving notifications yet.',
+  denied: 'Blocked in this browser. Re-allow notifications for this site, then reload.',
+  'needs-install': 'Add this to your Home Screen first — tap Share, then “Add to Home Screen”.',
+  insecure: 'Browsers only allow notifications on a secure origin, so this needs HTTPS.',
+  unsupported: 'This browser has no Web Push support. Try Chrome on Android, or an installed app on iOS 16.4+.',
+} as const
+
+const deliveryDetail = computed(() => DELIVERY[push.state.value])
+
+const canToggleDelivery = computed(() =>
+  push.state.value === 'subscribed' || push.state.value === 'available',
+)
+
+function deviceWhen(d: { last_ok: number | null; created: number }) {
+  return d.last_ok ? timeAgo(d.last_ok) : 'no sends yet'
 }
 
 const notifySummary = computed(() => {
@@ -1050,85 +1070,39 @@ async function runTest(dryRun: boolean) {
       <div class="flex items-start justify-between gap-4">
         <div class="min-w-0">
           <p class="text-sm font-medium text-highlighted">Send notifications</p>
-          <p class="mt-0.5 text-xs text-dimmed">
-            Needs the <strong class="text-default">Play</strong> trigger, which a sync adds automatically.
-          </p>
         </div>
         <USwitch v-model="notifyEnabled" :disabled="notifyBusy" class="mt-0.5 shrink-0" />
       </div>
 
       <USeparator />
 
-      <UAlert
-        v-if="push.state.value === 'insecure'"
-        color="warning"
-        variant="subtle"
-        icon="i-lucide-shield-alert"
-        title="Needs HTTPS"
-        description="Browsers only allow notifications on a secure origin. Reach the bridge over HTTPS — a reverse proxy or a Cloudflare Tunnel — then come back."
-      />
-      <UAlert
-        v-else-if="push.state.value === 'needs-install'"
-        color="info"
-        variant="subtle"
-        icon="i-lucide-share"
-        title="Add to Home Screen first"
-        description="On iPhone and iPad, notifications only work once this is installed as an app. Tap Share, then “Add to Home Screen”, and open it from there."
-      />
-      <UAlert
-        v-else-if="push.state.value === 'unsupported'"
-        color="neutral"
-        variant="subtle"
-        icon="i-lucide-bell-off"
-        title="Not supported here"
-        description="This browser has no Web Push support. Try Chrome on Android, or an installed app on iOS 16.4+."
-      />
-      <UAlert
-        v-else-if="push.state.value === 'denied'"
-        color="error"
-        variant="subtle"
-        icon="i-lucide-bell-off"
-        title="Notifications are blocked"
-        description="You declined the permission prompt for this site. Re-allow notifications in your browser's site settings, then reload."
-      />
-      <div v-else class="flex items-center justify-between gap-4">
+      <div class="flex items-start justify-between gap-4">
         <div class="min-w-0">
           <p class="text-sm font-medium text-highlighted">This device</p>
-          <p class="mt-0.5 text-xs text-dimmed">
-            {{ push.state.value === 'subscribed' ? 'Receiving notifications.' : 'Each phone or browser opts in separately.' }}
-          </p>
+          <p class="mt-0.5 text-xs text-dimmed">{{ deliveryDetail }}</p>
         </div>
         <UButton
+          v-if="canToggleDelivery"
           :loading="push.busy.value"
           :color="push.state.value === 'subscribed' ? 'neutral' : 'primary'"
           :variant="push.state.value === 'subscribed' ? 'subtle' : 'solid'"
           :label="push.state.value === 'subscribed' ? 'Turn off' : 'Turn on'"
-          class="shrink-0"
+          class="mt-0.5 shrink-0"
           @click="push.state.value === 'subscribed' ? push.disable() : push.enable()"
         />
       </div>
 
       <template v-if="push.devices.value.length">
-        <USeparator />
-        <div class="space-y-3">
-          <div class="flex items-center justify-between gap-3">
-            <p class="text-xs uppercase tracking-wider text-dimmed">Subscribed devices</p>
-            <UButton
-              :loading="testingPush"
-              color="neutral"
-              variant="subtle"
-              size="xs"
-              label="Send a test"
-              icon="i-lucide-send"
-              @click="sendTestPush"
-            />
-          </div>
+        <div class="space-y-2">
           <div
             v-for="d in push.devices.value"
             :key="d.id"
             class="flex items-center justify-between gap-3"
           >
-            <span class="min-w-0 truncate text-sm text-default">{{ d.label }}</span>
+            <p class="min-w-0 truncate text-sm text-default">
+              {{ d.label }}
+              <span v-if="d.fingerprint === push.ownFingerprint.value" class="text-dimmed">· this device</span>
+            </p>
             <div class="flex shrink-0 items-center gap-2">
               <UBadge
                 v-if="d.fail_count > 0"
@@ -1137,6 +1111,7 @@ async function runTest(dryRun: boolean) {
                 size="sm"
                 :label="`${d.fail_count} failed`"
               />
+              <span v-else class="text-xs text-dimmed">{{ deviceWhen(d) }}</span>
               <UButton
                 icon="i-lucide-x"
                 color="neutral"
@@ -1147,6 +1122,17 @@ async function runTest(dryRun: boolean) {
               />
             </div>
           </div>
+        </div>
+        <div class="flex justify-end">
+          <UButton
+            :loading="testingPush"
+            color="neutral"
+            variant="ghost"
+            size="xs"
+            label="Send a test"
+            icon="i-lucide-send"
+            @click="sendTestPush"
+          />
         </div>
       </template>
     </DisclosureCard>

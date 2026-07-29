@@ -40,7 +40,7 @@ onBeforeUnmount(() => status.stop())
       v-model:open="drawer"
       side="left"
       title="Seenr Bridge"
-      :ui="{ content: 'bg-rail' }"
+      :ui="{ content: 'bg-rail pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]' }"
     >
       <!-- Everything in the body, deliberately NOT the footer slot: the slideover's
            content has `divide-y`, so a third child would draw a line above the footer
@@ -56,7 +56,7 @@ onBeforeUnmount(() => status.stop())
     </USlideover>
 
     <div class="flex min-w-0 flex-1 flex-col">
-      <header class="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-default bg-default/80 px-4 py-3 backdrop-blur sm:px-6">
+      <header class="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-default bg-default/80 px-4 pt-[calc(0.75rem_+_env(safe-area-inset-top))] pb-3 backdrop-blur sm:px-6">
         <div class="flex min-w-0 items-center gap-2">
           <UButton
             class="lg:hidden"
@@ -71,7 +71,7 @@ onBeforeUnmount(() => status.stop())
         <AccountMenu :username="auth.username" :has-password="auth.hasPassword" @logout="auth.logout" />
       </header>
 
-      <main class="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
+      <main class="mx-auto w-full max-w-5xl px-4 pt-6 pb-[calc(1.5rem_+_env(safe-area-inset-bottom))] sm:px-6 sm:pt-8 sm:pb-[calc(2rem_+_env(safe-area-inset-bottom))]">
         <slot />
       </main>
     </div>

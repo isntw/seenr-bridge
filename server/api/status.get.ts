@@ -1,4 +1,4 @@
-import { getSettings, listMappings } from '../utils/db'
+import { getSettings, getWebhookSecret, listMappings } from '../utils/db'
 import { testConnection, bridgeWebhookExists } from '../utils/tautulli'
 import type { Status } from '../../shared/types'
 
@@ -18,5 +18,10 @@ export default defineEventHandler(async (): Promise<Status> => {
     }
   }
 
-  return { tautulli, webhook, users: listMappings().length }
+  return {
+    tautulli,
+    webhook,
+    webhook_secured: !!getWebhookSecret(),
+    users: listMappings().length,
+  }
 })

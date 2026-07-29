@@ -4,6 +4,7 @@ import type { Status } from '../../shared/types'
 export const useStatusStore = defineStore('status', () => {
   const tautulli = ref<Status['tautulli'] | null>(null)
   const webhook = ref(false)
+  const webhookSecured = ref(false)
   const users = ref(0)
 
   let timer: ReturnType<typeof setInterval> | undefined
@@ -14,6 +15,7 @@ export const useStatusStore = defineStore('status', () => {
       const s = await $fetch<Status>('/api/status')
       tautulli.value = s.tautulli
       webhook.value = s.webhook
+      webhookSecured.value = s.webhook_secured
       users.value = s.users
     } catch {
       tautulli.value = { ok: false, message: 'unreachable' }
@@ -36,5 +38,5 @@ export const useStatusStore = defineStore('status', () => {
     }
   }
 
-  return { tautulli, webhook, users, refresh, start, stop }
+  return { tautulli, webhook, webhookSecured, users, refresh, start, stop }
 })

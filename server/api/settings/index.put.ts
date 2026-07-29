@@ -14,6 +14,13 @@ function validate(raw: unknown): Partial<SettingsRow> {
     ? JSON.stringify(b.libraries.map(String))
     : undefined
 
+  // Same partial-PUT contract as libraries above. Note the stored empty array
+  // means "notify nobody", so a caller CAN legitimately clear the selection —
+  // unlike libraries, where empty means every library.
+  const notify_users = Array.isArray(b.notify_users)
+    ? JSON.stringify(b.notify_users.map(String))
+    : undefined
+
   return {
     tautulli_url: str(b.tautulli_url),
     tautulli_apikey: str(b.tautulli_apikey),
@@ -24,6 +31,8 @@ function validate(raw: unknown): Partial<SettingsRow> {
     sync_episodes: bool(b.sync_episodes),
     libraries,
     plex_token: str(b.plex_token),
+    notify_enabled: bool(b.notify_enabled),
+    notify_users,
   }
 }
 

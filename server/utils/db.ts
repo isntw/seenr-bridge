@@ -138,6 +138,21 @@ CREATE TABLE IF NOT EXISTS pending_watches (
   FOREIGN KEY (mapping_id) REFERENCES mappings (id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_pending_rating_key ON pending_watches (rating_key);
+
+-- Web Push endpoints, one row per device that opted in. user_id is carried from
+-- the start even though this panel has exactly one account, so multi-account
+-- support would need no data migration here.
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  endpoint TEXT NOT NULL UNIQUE,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  label TEXT NOT NULL DEFAULT '',
+  created INTEGER NOT NULL,
+  last_ok INTEGER,
+  fail_count INTEGER NOT NULL DEFAULT 0
+);
 `)
 
   // Append-only column guards. Retained because the app still needs to
@@ -248,6 +263,29 @@ CREATE INDEX IF NOT EXISTS idx_pending_rating_key ON pending_watches (rating_key
 
   if (!cols('pending_watches').includes('plex_sync'))
     db.exec('ALTER TABLE pending_watches ADD COLUMN plex_sync INTEGER NOT NULL DEFAULT 0')
+
+  // Off by default: an upgrade must not start pushing notifications to a device
+  // nobody has opted in yet.
+  if (!settingsCols.includes('notify_enabled'))
+    db.exec('ALTER TABLE settings ADD COLUMN notify_enabled INTEGER NOT NULL DEFAULT 0')
+  // JSON array of Tautulli usernames whose playback raises a notification.
+  // Empty means NOBODY — deliberately the opposite of settings.libraries. That
+  // convention is safe because it only ever widens forwarding; this one
+  // interrupts the operator's phone, so it must stay opt-in. Same reasoning as
+  // shared_titles.plex_sync defaulting to 0.
+  if (!settingsCols.includes('notify_users'))
+    db.exec("ALTER TABLE settings ADD COLUMN notify_users TEXT NOT NULL DEFAULT ''")
+
+  // The VAPID keypair and the webhook secret are deliberately NOT part of
+  // SettingsRow: settingsToWire() spreads the row, so a column added there would
+  // be served to the browser. They are infrastructure state reached through the
+  // dedicated accessors below, exactly like plex_client_id.
+  if (!settingsCols.includes('vapid_public'))
+    db.exec("ALTER TABLE settings ADD COLUMN vapid_public TEXT NOT NULL DEFAULT ''")
+  if (!settingsCols.includes('vapid_private'))
+    db.exec("ALTER TABLE settings ADD COLUMN vapid_private TEXT NOT NULL DEFAULT ''")
+  if (!settingsCols.includes('webhook_secret'))
+    db.exec("ALTER TABLE settings ADD COLUMN webhook_secret TEXT NOT NULL DEFAULT ''")
 }
 
 export interface SettingsRow {
@@ -261,6 +299,9 @@ export interface SettingsRow {
   /** JSON array of Tautulli section_ids. Empty string means every library. */
   libraries: string
   plex_token: string
+  notify_enabled: number
+  /** JSON array of Tautulli usernames. Empty string means NOBODY, not everyone. */
+  notify_users: string
 }
 
 export interface MappingRow {
@@ -314,12 +355,24 @@ export function settingsToWire(r: SettingsRow): Settings {
     // representation must not leak past this boundary. A malformed or legacy
     // value degrades to [] — which means "all libraries", the safe default.
     libraries: parseLibraries(r.libraries),
+    notify_enabled: !!r.notify_enabled,
+    notify_users: parseNotifyUsers(r.notify_users),
   }
 }
 
 /** Tolerant parse: '' (the column default), null, malformed JSON and a non-array
  *  payload all collapse to [], i.e. every library. */
 export function parseLibraries(raw: string | null | undefined): string[] {
+  return parseStringArray(raw)
+}
+
+/** Usernames whose playback raises a notification. Shares parseLibraries' tolerance
+ *  but NOT its meaning: an empty result here means nobody, not everybody. */
+export function parseNotifyUsers(raw: string | null | undefined): string[] {
+  return parseStringArray(raw)
+}
+
+function parseStringArray(raw: string | null | undefined): string[] {
   if (!raw) return []
   try {
     const v = JSON.parse(raw)
@@ -351,7 +404,7 @@ export function eventToWire(r: EventRowDb): ScrobbleEvent {
 export function getSettings(): SettingsRow {
   return useDb()
     .prepare(
-      'SELECT tautulli_url, tautulli_apikey, seenr_base_url, forward_enabled, bridge_url, sync_movies, sync_episodes, libraries, plex_token FROM settings WHERE id = 1',
+      'SELECT tautulli_url, tautulli_apikey, seenr_base_url, forward_enabled, bridge_url, sync_movies, sync_episodes, libraries, plex_token, notify_enabled, notify_users FROM settings WHERE id = 1',
     )
     .get() as SettingsRow
 }
@@ -368,10 +421,12 @@ export function saveSettings(s: Partial<SettingsRow>): SettingsRow {
     sync_episodes: s.sync_episodes ?? cur.sync_episodes,
     libraries: s.libraries ?? cur.libraries,
     plex_token: s.plex_token ?? cur.plex_token,
+    notify_enabled: s.notify_enabled ?? cur.notify_enabled,
+    notify_users: s.notify_users ?? cur.notify_users,
   }
   useDb()
     .prepare(
-      'UPDATE settings SET tautulli_url=?, tautulli_apikey=?, seenr_base_url=?, forward_enabled=?, bridge_url=?, sync_movies=?, sync_episodes=?, libraries=?, plex_token=? WHERE id=1',
+      'UPDATE settings SET tautulli_url=?, tautulli_apikey=?, seenr_base_url=?, forward_enabled=?, bridge_url=?, sync_movies=?, sync_episodes=?, libraries=?, plex_token=?, notify_enabled=?, notify_users=? WHERE id=1',
     )
     .run(
       next.tautulli_url,
@@ -383,6 +438,8 @@ export function saveSettings(s: Partial<SettingsRow>): SettingsRow {
       next.sync_episodes,
       next.libraries,
       next.plex_token,
+      next.notify_enabled,
+      next.notify_users,
     )
   return next
 }
@@ -400,6 +457,100 @@ export function getPlexClientId(): string {
   const id = crypto.randomUUID()
   db.prepare('UPDATE settings SET plex_client_id = ? WHERE id = 1').run(id)
   return id
+}
+
+/** The stored VAPID pair, either half possibly ''. Generating it needs web-push, so
+ *  that lives in server/utils/push.ts — this is only storage. Never on the wire. */
+export function getVapidKeys(): { publicKey: string; privateKey: string } {
+  const row = useDb()
+    .prepare('SELECT vapid_public, vapid_private FROM settings WHERE id = 1')
+    .get() as { vapid_public: string; vapid_private: string }
+  return { publicKey: row.vapid_public, privateKey: row.vapid_private }
+}
+
+export function setVapidKeys(publicKey: string, privateKey: string): void {
+  useDb()
+    .prepare('UPDATE settings SET vapid_public = ?, vapid_private = ? WHERE id = 1')
+    .run(publicKey, privateKey)
+}
+
+/** '' when the webhook is not yet authenticated. The handler enforces the header
+ *  ONLY when this is non-empty, which is what lets an existing install keep
+ *  working until its owner re-syncs the notifier. */
+export function getWebhookSecret(): string {
+  const row = useDb().prepare('SELECT webhook_secret FROM settings WHERE id = 1').get() as {
+    webhook_secret: string
+  }
+  return row.webhook_secret
+}
+
+/** Read-or-create. Called when syncing the notifier, so the secret comes into
+ *  existence in the same action that writes it into Tautulli's headers — there is
+ *  never a moment where the bridge demands a header Tautulli isn't sending. */
+export function ensureWebhookSecret(): string {
+  const existing = getWebhookSecret()
+  if (existing) return existing
+  const secret = crypto.randomBytes(32).toString('hex')
+  useDb().prepare('UPDATE settings SET webhook_secret = ? WHERE id = 1').run(secret)
+  return secret
+}
+
+export interface PushSubscriptionRow {
+  id: number
+  user_id: number
+  endpoint: string
+  p256dh: string
+  auth: string
+  label: string
+  created: number
+  last_ok: number | null
+  fail_count: number
+}
+
+/** Upsert on endpoint: a browser re-subscribing the same device must not create a
+ *  duplicate row, and its keys can legitimately change when it does. */
+export function addPushSubscription(s: {
+  user_id: number
+  endpoint: string
+  p256dh: string
+  auth: string
+  label: string
+}): void {
+  useDb()
+    .prepare(
+      `INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, label, created)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT (endpoint) DO UPDATE SET
+         p256dh = excluded.p256dh, auth = excluded.auth, label = excluded.label,
+         fail_count = 0`,
+    )
+    .run(s.user_id, s.endpoint, s.p256dh, s.auth, s.label, Date.now())
+}
+
+export function listPushSubscriptions(): PushSubscriptionRow[] {
+  return useDb()
+    .prepare('SELECT * FROM push_subscriptions ORDER BY created')
+    .all() as PushSubscriptionRow[]
+}
+
+export function deletePushSubscriptionByEndpoint(endpoint: string): void {
+  useDb().prepare('DELETE FROM push_subscriptions WHERE endpoint = ?').run(endpoint)
+}
+
+export function deletePushSubscription(id: number): void {
+  useDb().prepare('DELETE FROM push_subscriptions WHERE id = ?').run(id)
+}
+
+export function markPushOk(id: number): void {
+  useDb()
+    .prepare('UPDATE push_subscriptions SET last_ok = ?, fail_count = 0 WHERE id = ?')
+    .run(Date.now(), id)
+}
+
+export function markPushFailed(id: number): void {
+  useDb()
+    .prepare('UPDATE push_subscriptions SET fail_count = fail_count + 1 WHERE id = ?')
+    .run(id)
 }
 
 export function listMappings(): MappingRow[] {

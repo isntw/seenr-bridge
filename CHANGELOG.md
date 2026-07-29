@@ -14,7 +14,21 @@ Notable changes per release. Versions follow [semantic versioning](https://semve
   including a maskable variant so Android does not crop the corners. The favicon
   is the same mark, replacing a 27KB embedded raster with real vector.
 - A service worker, deliberately with no caching, so the app is installable and
-  push notifications have somewhere to attach later.
+  push notifications have somewhere to attach.
+- **Push notifications when someone starts watching.** Tap one and you land on the
+  Dashboard with that session's Watch-together dialog already open, so you can count
+  the watch for a co-watcher while it is still playing — which previously only worked
+  if you happened to have the Dashboard open. Pick whose playback notifies you in
+  Settings; nobody is selected until you say so. It works for household members who
+  have no seenr account of their own, since a watch can be counted for someone else
+  regardless. Needs the **Play** trigger on the webhook, an HTTPS origin, and on
+  iPhone or iPad the app added to the Home Screen first — Settings says which of
+  those is missing rather than offering a button that cannot work.
+- **The Tautulli webhook can now authenticate.** Syncing the notifier generates a
+  secret and writes it into Tautulli's headers, after which the endpoint rejects
+  anything without it. This matters if you expose the bridge publicly: until now
+  anyone who found the URL could post forged scrobbles. Existing installs are
+  unaffected until they re-sync, so upgrading cannot break your scrobbling.
 
 ### Fixed
 
@@ -22,6 +36,12 @@ Notable changes per release. Versions follow [semantic versioning](https://semve
   status bar or the home indicator when launched from the home screen.
 - A stray fragment of a source comment no longer renders as text above the Now
   playing card on the Dashboard.
+- **The `Play` webhook trigger was unsafe and is now the notification trigger.**
+  Enabling it previously forwarded a `media.play` to seenr, consumed the queued
+  Watch-together entries at play time instead of when the watch finished, and marked
+  co-watchers' Plex copies watched at 0% progress. `Play` now only raises a
+  notification and never scrobbles. `Watched` remains the trigger that scrobbles;
+  `Stop`, `Pause` and `Resume` are unchanged.
 
 ## 2.5.0
 

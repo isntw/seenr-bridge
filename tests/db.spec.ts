@@ -646,3 +646,96 @@ describe('pending watches', () => {
     expect(() => upgraded.getPendingWatches('1')).not.toThrow()
   })
 })
+
+describe('push subscriptions', () => {
+  const sub = {
+    user_id: 1,
+    endpoint: 'https://fcm.googleapis.com/fcm/send/abc',
+    p256dh: 'key',
+    auth: 'auth',
+    label: 'iPhone',
+  }
+
+  it('stores and lists a subscription', async () => {
+    const db = await freshDb()
+    db.addPushSubscription(sub)
+
+    const all = db.listPushSubscriptions()
+    expect(all).toHaveLength(1)
+    expect(all[0]!.endpoint).toBe(sub.endpoint)
+    expect(all[0]!.label).toBe('iPhone')
+    expect(all[0]!.fail_count).toBe(0)
+    expect(all[0]!.last_ok).toBeNull()
+  })
+
+  // A browser re-subscribing the same device must update it, not add a second row —
+  // and its keys legitimately rotate when it does.
+  it('upserts on endpoint rather than duplicating', async () => {
+    const db = await freshDb()
+    db.addPushSubscription(sub)
+    db.addPushSubscription({ ...sub, p256dh: 'rotated', label: 'iPad' })
+
+    const all = db.listPushSubscriptions()
+    expect(all).toHaveLength(1)
+    expect(all[0]!.p256dh).toBe('rotated')
+    expect(all[0]!.label).toBe('iPad')
+  })
+
+  it('clears fail_count on re-subscribe', async () => {
+    const db = await freshDb()
+    db.addPushSubscription(sub)
+    db.markPushFailed(db.listPushSubscriptions()[0]!.id)
+    expect(db.listPushSubscriptions()[0]!.fail_count).toBe(1)
+
+    db.addPushSubscription(sub)
+
+    expect(db.listPushSubscriptions()[0]!.fail_count).toBe(0)
+  })
+
+  it('records a success and resets failures', async () => {
+    const db = await freshDb()
+    db.addPushSubscription(sub)
+    const id = db.listPushSubscriptions()[0]!.id
+    db.markPushFailed(id)
+    db.markPushOk(id)
+
+    const row = db.listPushSubscriptions()[0]!
+    expect(row.fail_count).toBe(0)
+    expect(row.last_ok).toBeGreaterThan(0)
+  })
+
+  it('deletes by endpoint and by id', async () => {
+    const db = await freshDb()
+    db.addPushSubscription(sub)
+    db.deletePushSubscriptionByEndpoint(sub.endpoint)
+    expect(db.listPushSubscriptions()).toHaveLength(0)
+
+    db.addPushSubscription(sub)
+    db.deletePushSubscription(db.listPushSubscriptions()[0]!.id)
+    expect(db.listPushSubscriptions()).toHaveLength(0)
+  })
+})
+
+describe('parseNotifyUsers', () => {
+  // Same tolerance as parseLibraries, but the caller reads an empty result as
+  // "nobody" rather than "everyone".
+  it('degrades every malformed value to an empty list', async () => {
+    const db = await freshDb()
+    expect(db.parseNotifyUsers('')).toEqual([])
+    expect(db.parseNotifyUsers(null)).toEqual([])
+    expect(db.parseNotifyUsers(undefined)).toEqual([])
+    expect(db.parseNotifyUsers('not json')).toEqual([])
+    expect(db.parseNotifyUsers('{"a":1}')).toEqual([])
+  })
+
+  it('parses a username array', async () => {
+    const db = await freshDb()
+    expect(db.parseNotifyUsers('["alice","bob"]')).toEqual(['alice', 'bob'])
+  })
+
+  it('defaults to empty, so an upgrade notifies nobody', async () => {
+    const db = await freshDb()
+    expect(db.settingsToWire(db.getSettings()).notify_users).toEqual([])
+    expect(db.settingsToWire(db.getSettings()).notify_enabled).toBe(false)
+  })
+})

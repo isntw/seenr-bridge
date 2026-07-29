@@ -8,7 +8,22 @@ export default defineNuxtConfig({
     head: {
       title: 'Seenr Bridge',
       htmlAttrs: { lang: 'en' },
-      link: [{ rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }],
+      link: [
+        { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
+        // iOS does not reliably take home-screen icons from the manifest.
+        { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' },
+        { rel: 'manifest', href: '/manifest.webmanifest' },
+      ],
+      meta: [
+        // Nuxt's default viewport omits viewport-fit, and without it every
+        // env(safe-area-inset-*) in the layout resolves to 0px.
+        { name: 'viewport', content: 'width=device-width, initial-scale=1, viewport-fit=cover' },
+        { name: 'theme-color', content: '#0a0e16' },
+        { name: 'mobile-web-app-capable', content: 'yes' },
+        { name: 'apple-mobile-web-app-capable', content: 'yes' },
+        { name: 'apple-mobile-web-app-status-bar-style', content: 'black-translucent' },
+        { name: 'apple-mobile-web-app-title', content: 'Seenr Bridge' },
+      ],
     },
   },
 

@@ -660,7 +660,7 @@ Expected: `{"authenticated":true,"username":"audit","needsSetup":false}`.
 
 - [ ] **Step 3: Measure horizontal overflow at 390×844 on every route**
 
-Use the Playwright MCP browser. Resize to 390×844, sign in as `audit` / `audit-password-1`, then for each of `/dashboard`, `/shared`, `/settings`, `/login` navigate and evaluate:
+Use a browser. Resize to 390×844, sign in as `audit` / `audit-password-1`, then for each of `/dashboard`, `/shared`, `/settings`, `/login` navigate and evaluate:
 
 ```js
 () => ({

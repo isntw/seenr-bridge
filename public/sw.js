@@ -1,11 +1,10 @@
-// No fetch handler on purpose — caching a live dashboard would serve stale data.
 self.addEventListener('install', () => self.skipWaiting())
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()))
 
 self.addEventListener('push', (event) => {
   let p = {}
   try {
-    p = event.data ? event.data.json() : {}
+    p = (event.data && event.data.json()) || {}
   } catch {
     p = {}
   }
@@ -27,8 +26,6 @@ self.addEventListener('notificationclick', (event) => {
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
-      // Reuse an open tab rather than piling up windows, but navigate it so the
-      // deep-link query still arrives.
       for (const c of clients) {
         if (new URL(c.url).origin === self.location.origin) {
           return c.focus().then(() => ('navigate' in c ? c.navigate(url) : undefined))

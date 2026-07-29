@@ -10,7 +10,6 @@ export interface Settings {
   libraries: string[]
   plex_token: string
   notify_enabled: boolean
-  /** Usernames whose playback notifies. EMPTY MEANS NOBODY — opposite of `libraries`. */
   notify_users: string[]
 }
 
@@ -63,12 +62,10 @@ export interface Stats {
 export interface Status {
   tautulli: { ok: boolean; message: string }
   webhook: boolean
-  /** Whether the endpoint requires the secret header. Never the secret itself. */
   webhook_secured: boolean
   users: number
 }
 
-/** One device subscribed to push. Never carries the endpoint or its keys. */
 export interface PushDevice {
   id: number
   label: string

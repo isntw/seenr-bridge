@@ -668,8 +668,6 @@ describe('push subscriptions', () => {
     expect(all[0]!.last_ok).toBeNull()
   })
 
-  // A browser re-subscribing the same device must update it, not add a second row —
-  // and its keys legitimately rotate when it does.
   it('upserts on endpoint rather than duplicating', async () => {
     const db = await freshDb()
     db.addPushSubscription(sub)
@@ -717,8 +715,6 @@ describe('push subscriptions', () => {
 })
 
 describe('parseNotifyUsers', () => {
-  // Same tolerance as parseLibraries, but the caller reads an empty result as
-  // "nobody" rather than "everyone".
   it('degrades every malformed value to an empty list', async () => {
     const db = await freshDb()
     expect(db.parseNotifyUsers('')).toEqual([])

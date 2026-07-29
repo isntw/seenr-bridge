@@ -7,7 +7,6 @@ const props = defineProps<{
   mappings: Mapping[]
   shares: SharedTitle[]
   pending: PendingWatchEntry[]
-  /** Session to open the dialog for, from a tapped notification. */
   focus?: { rating_key: string; username: string } | null
 }>()
 const emit = defineEmits<{ changed: []; focused: [] }>()
@@ -93,8 +92,6 @@ function toggle(id: number, on: boolean) {
   picked.value = on ? [...picked.value, id] : picked.value.filter((x) => x !== id)
 }
 
-// A tapped notification arrives before the first activity poll resolves, so this
-// watches both the request and the sessions and fires whichever lands last.
 watch(
   [() => props.focus, () => props.sessions],
   () => {

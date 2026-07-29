@@ -181,10 +181,6 @@ describe('verifyPassword against a Plex-created account', () => {
 })
 
 describe('webhookSecretValid', () => {
-  // No secret stored means an install whose Tautulli notifier predates
-  // authentication. It must keep working, or upgrading silently stops every
-  // scrobble: the 401 happens before processEvent(), so no event row is written
-  // and nothing shows on the Dashboard.
   it('accepts anything when no secret is configured', () => {
     expect(webhookSecretValid(undefined, '')).toBe(true)
     expect(webhookSecretValid('whatever', '')).toBe(true)
@@ -197,7 +193,6 @@ describe('webhookSecretValid', () => {
 
   it('rejects a wrong secret', () => {
     expect(webhookSecretValid('nope', 'the-secret')).toBe(false)
-    // Same length, so this exercises the compare rather than the length guard.
     expect(webhookSecretValid('the-secreX', 'the-secret')).toBe(false)
   })
 
@@ -215,17 +210,17 @@ describe('webhook secret storage', () => {
     const db = await import('../server/utils/db')
     expect(db.getWebhookSecret()).toBe('')
 
-    const first = db.ensureWebhookSecret()
+    const first = db.generateWebhookSecret()
     expect(first).toHaveLength(64)
-    expect(db.ensureWebhookSecret()).toBe(first)
+    expect(db.generateWebhookSecret()).not.toBe(first)
+
+    db.setWebhookSecret(first)
     expect(db.getWebhookSecret()).toBe(first)
   })
 
-  // settingsToWire() spreads the row, so a secret on SettingsRow would be served to
-  // any authenticated browser as part of GET /api/settings.
   it('never appears in the settings wire payload', async () => {
     const db = await import('../server/utils/db')
-    db.ensureWebhookSecret()
+    db.setWebhookSecret(db.generateWebhookSecret())
 
     const wire = JSON.stringify(db.settingsToWire(db.getSettings()))
 

@@ -75,9 +75,8 @@ Artefacts:
 
 **Rendering, and its one open question.** No SVG rasteriser is installed
 (`magick`, `convert`, `rsvg-convert`, `inkscape` all absent; `sharp` is not a
-dependency and will not be added for this). Available: macOS `sips` and
-`qlmanage`, plus the Playwright MCP browser. The plan is to render via headless
-browser screenshot at exact pixel sizes, falling back to `qlmanage -t -s <size>`.
+dependency and will not be added for this). Available: macOS `sips` and `qlmanage`. The plan is to render with
+`qlmanage -t -s <size>`.
 Whichever is used, the PNGs are committed as build artefacts — there is no
 generation step in the build, and no new runtime or dev dependency.
 
@@ -135,7 +134,7 @@ A static scan of `settings.vue`, `ItemPicker.vue`, `SharedTitleModal.vue`,
 no `overflow-x`, and no grids wider than 4 columns. So there is no known list of
 breakages to fix up front.
 
-The audit is therefore empirical: load each route at 390×844 in Playwright, confirm
+The audit is therefore empirical: load each route at 390×844 in a browser, confirm
 `document.scrollingElement.scrollWidth <= clientWidth` (no horizontal scroll), and
 check tap targets and dialog heights on the four heavy components. Fixes are
 whatever that surfaces. `settings.vue` is 39KB and the most likely to need work.
@@ -150,7 +149,7 @@ nothing meaningful to assert in Vitest. Verification is therefore explicit:
    **Required, not optional:** this change edits `app.head`, and per CLAUDE.md a
    broken shell returns HTTP 200 with a blank page, so an HTTP check cannot catch it.
 3. `/manifest.webmanifest` and every icon path return 200 from the built server.
-4. Playwright at 390×844: no horizontal scroll on `/dashboard`, `/shared`,
+4. a browser at 390×844: no horizontal scroll on `/dashboard`, `/shared`,
    `/settings`, `/login`.
 5. Manual, on a real device — the only way to confirm the parts that matter:
    Android install prompt appears; iOS Add to Home Screen launches standalone with

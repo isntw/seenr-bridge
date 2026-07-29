@@ -4,9 +4,10 @@ export default defineNuxtRouteMiddleware(async (to) => {
   if (!auth.ready) await auth.fetchStatus()
 
   if (!auth.authenticated && to.path !== '/login') {
-    return navigateTo('/login')
+    return navigateTo(to.fullPath === '/' ? '/login' : `/login?redirect=${encodeURIComponent(to.fullPath)}`)
   }
   if (auth.authenticated && to.path === '/login') {
-    return navigateTo('/dashboard')
+    const redirect = typeof to.query.redirect === 'string' ? to.query.redirect : ''
+    return navigateTo(redirect.startsWith('/') && !redirect.startsWith('//') ? redirect : '/dashboard')
   }
 })

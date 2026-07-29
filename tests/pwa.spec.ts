@@ -47,8 +47,6 @@ describe('web app manifest', () => {
     expect(manifest.icons.some((i) => i.purpose === 'maskable')).toBe(true)
   })
 
-  // A start_url nitro does not prerender launches into a blank shell that still
-  // returns 200 — see the prerender comment in nuxt.config.ts.
   it('starts on a route nitro prerenders', () => {
     const routes = read('nuxt.config.ts').match(/prerender:\s*\{\s*routes:\s*\[([^\]]*)\]/)?.[1]
     expect(routes).toBeDefined()

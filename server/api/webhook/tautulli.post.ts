@@ -86,8 +86,6 @@ export default defineEventHandler(async (event) => {
     username: String(username),
   }
 
-  // `play` notifies and must NOT reach processEvent(): that would scrobble on play,
-  // delete pending_watches early and mark co-watchers' Plex watched at 0% progress.
   const isPlaybackStart = incoming.action.toLowerCase().replace(/^on_/, '') === 'play'
 
   // Respond fast; enrich and forward in the background so Tautulli never
@@ -96,8 +94,9 @@ export default defineEventHandler(async (event) => {
   const work = (
     isPlaybackStart ? handlePlaybackStart(incoming) : processEvent(incoming)
   ).catch((err) => {
-    // processEvent records its own failures; reaching here means that threw. For a
-    // play event nothing is recorded at all, so this log is the only trace.
+    // processEvent already records its own failures to the events table;
+    // reaching this catch means that recording itself threw, so this is
+    // the only place left to leave a trace.
     console.error('[webhook/tautulli] processing failed', {
       action: incoming.action,
       rating_key: incoming.rating_key,

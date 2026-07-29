@@ -41,15 +41,21 @@ const testingPush = ref(false)
 
 onMounted(() => {
   push.refresh()
-  $fetch<{ header: string; secret: string }>('/api/tautulli/webhook-secret')
-    .then((r) => (webhookSecret.value = r.secret))
-    .catch(() => {})
+  loadWebhookSecret()
 })
 
 const webhookSecret = ref('')
 
-// Reflects what a hand-configured notifier must send. Without the secret a manual
-// setup would 401 as soon as one exists.
+async function loadWebhookSecret() {
+  try {
+    webhookSecret.value = (
+      await $fetch<{ header: string; secret: string }>('/api/tautulli/webhook-secret')
+    ).secret
+  } catch {
+    webhookSecret.value = ''
+  }
+}
+
 const webhookHeaders = computed(() =>
   JSON.stringify({
     'Content-Type': 'application/json',
@@ -60,14 +66,25 @@ const webhookHeaders = computed(() =>
 const notifyEnabled = computed({
   get: () => !!store.settings?.notify_enabled,
   set: (v: boolean) => {
-    // Notifications ride the `play` trigger, so turning them on queues it for the
-    // next sync rather than leaving the feature silently inert.
     if (v && !selectedTriggers.value.includes('play')) selectedTriggers.value.push('play')
     store.save({ notify_enabled: v }).catch((e) =>
       toast.add({ title: apiErrorMessage(e, 'Could not save'), color: 'error' }),
     )
   },
 })
+
+let triggersSeeded = false
+watch(
+  () => store.settings,
+  (s) => {
+    if (!s || triggersSeeded) return
+    triggersSeeded = true
+    if (s.notify_enabled && !selectedTriggers.value.includes('play')) {
+      selectedTriggers.value.push('play')
+    }
+  },
+  { immediate: true },
+)
 
 const notifyUsers = computed(() => store.settings?.notify_users ?? [])
 
@@ -105,7 +122,7 @@ const advanced = ref(false)
 const manual = ref(false)
 const testPanel = ref(false)
 
-const TEST_ACTIONS = ['watched', 'play', 'stop', 'pause', 'resume']
+const TEST_ACTIONS = ['watched', 'stop', 'pause', 'resume']
 const testRatingKey = ref('')
 const testUsername = ref('')
 const testAction = ref('watched')
@@ -318,6 +335,7 @@ async function runSync() {
       color: 'success',
     })
     status.refresh()
+    loadWebhookSecret()
   } catch (e) {
     toast.add({ title: apiErrorMessage(e, 'Sync failed.'), color: 'error' })
   } finally {
@@ -739,6 +757,14 @@ async function runTest(dryRun: boolean) {
             @click="toggleTrigger(t.key, !isTriggerSelected(t.key))"
           />
         </div>
+        <UAlert
+          v-if="status.tautulli && !status.webhookSecured"
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-shield-alert"
+          title="This webhook is unauthenticated"
+          description="Anything that can reach the URL can post scrobbles. Sync to Tautulli to add a secret header — required if you expose the bridge beyond your LAN."
+        />
         <div class="flex pt-1 sm:justify-end">
           <UButton
             :loading="syncing"

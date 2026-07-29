@@ -139,8 +139,6 @@ CREATE TABLE IF NOT EXISTS pending_watches (
 );
 CREATE INDEX IF NOT EXISTS idx_pending_rating_key ON pending_watches (rating_key);
 
--- user_id is carried even though this panel has one account, so multi-account
--- support would need no migration here.
 CREATE TABLE IF NOT EXISTS push_subscriptions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
@@ -265,13 +263,9 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
 
   if (!settingsCols.includes('notify_enabled'))
     db.exec('ALTER TABLE settings ADD COLUMN notify_enabled INTEGER NOT NULL DEFAULT 0')
-  // Empty means NOBODY, inverting settings.libraries: that only widens forwarding,
-  // this interrupts a phone.
   if (!settingsCols.includes('notify_users'))
     db.exec("ALTER TABLE settings ADD COLUMN notify_users TEXT NOT NULL DEFAULT ''")
 
-  // Kept off SettingsRow: settingsToWire() spreads the row, so a column there
-  // would be served to the browser. Same reason as plex_client_id.
   if (!settingsCols.includes('vapid_public'))
     db.exec("ALTER TABLE settings ADD COLUMN vapid_public TEXT NOT NULL DEFAULT ''")
   if (!settingsCols.includes('vapid_private'))
@@ -292,7 +286,6 @@ export interface SettingsRow {
   libraries: string
   plex_token: string
   notify_enabled: number
-  /** JSON array of Tautulli usernames. Empty string means NOBODY, not everyone. */
   notify_users: string
 }
 
@@ -358,7 +351,6 @@ export function parseLibraries(raw: string | null | undefined): string[] {
   return parseStringArray(raw)
 }
 
-/** Same tolerance as parseLibraries, opposite meaning: empty is nobody. */
 export function parseNotifyUsers(raw: string | null | undefined): string[] {
   return parseStringArray(raw)
 }
@@ -463,8 +455,6 @@ export function setVapidKeys(publicKey: string, privateKey: string): void {
     .run(publicKey, privateKey)
 }
 
-/** '' means the endpoint is unauthenticated; the handler only enforces the header
- *  when this is set, so an existing install keeps working until it re-syncs. */
 export function getWebhookSecret(): string {
   const row = useDb().prepare('SELECT webhook_secret FROM settings WHERE id = 1').get() as {
     webhook_secret: string
@@ -472,12 +462,12 @@ export function getWebhookSecret(): string {
   return row.webhook_secret
 }
 
-export function ensureWebhookSecret(): string {
-  const existing = getWebhookSecret()
-  if (existing) return existing
-  const secret = crypto.randomBytes(32).toString('hex')
+export function generateWebhookSecret(): string {
+  return crypto.randomBytes(32).toString('hex')
+}
+
+export function setWebhookSecret(secret: string): void {
   useDb().prepare('UPDATE settings SET webhook_secret = ? WHERE id = 1').run(secret)
-  return secret
 }
 
 export interface PushSubscriptionRow {

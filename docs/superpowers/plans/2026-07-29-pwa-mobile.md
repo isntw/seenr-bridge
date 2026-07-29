@@ -42,7 +42,7 @@ Produces the four PNGs and the new vector favicon that every later task referenc
 **Files:**
 - Create: `tools/icons/icon.svg` (rounded source)
 - Create: `tools/icons/icon-square.svg` (full-bleed source)
-- Create: `tools/icons/generate.sh` (documents how the PNGs were made)
+- Create: `tools/icons/generate.py` (renders and masks the PNGs; documents how they were made)
 - Create: `public/icon-192.png`, `public/icon-512.png`, `public/icon-maskable-512.png`, `public/apple-touch-icon.png`
 - Replace: `public/favicon.svg` (currently 27KB of base64 PNG wrapped in SVG)
 

@@ -2,6 +2,30 @@
 
 Notable changes per release. Versions follow [semantic versioning](https://semver.org).
 
+## 2.6.1
+
+### Fixed
+
+- **The Android status-bar notification icon was a blank white square.** Android
+  paints only the alpha channel of that icon and discards the colours, so the app
+  icon — whose S is white paint on a solid shape — arrived as the shape alone. It
+  now uses a dedicated icon whose transparency *is* the letter.
+- **You no longer have to tick yourself** in the notification list. Your own
+  playback always notifies you, which is the point when you want to count a film
+  for whoever is sitting with you, and your account is no longer offered as
+  something to choose.
+- **The webhook now says when it is unauthenticated.** It previously showed a
+  green "active" badge whenever a notifier existed, even with no secret set — the
+  badge only ever checked that a notifier of the right name was there.
+
+### Changed
+
+- Notification settings read more quietly: one shape per row, with colour kept
+  for the switch, a selected name, and a device that is actually failing. A
+  device row now shows which one you are using, and when delivery is failing it
+  says so in place of the delivery time — so a device that silently stops
+  working is visible without digging through logs.
+
 ## 2.6.0
 
 ### Added

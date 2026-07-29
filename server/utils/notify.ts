@@ -1,4 +1,5 @@
-import { getSettings, parseLibraries, parseNotifyUsers } from './db'
+import { getSettings, parseNotifyUsers } from './db'
+import { libraryGateReason } from './pipeline'
 import { getMetadata } from './tautulli'
 import { sendToAll, type SendResult } from './push'
 import type { IncomingEvent, TautulliMetadata } from '../../shared/types'
@@ -68,17 +69,13 @@ export async function handlePlaybackStart(
   try {
     meta = await getMetadata(settings.tautulli_url, settings.tautulli_apikey, input.rating_key)
   } catch (e) {
-    return {
-      notified: false,
-      reason: `Metadata lookup failed: ${e instanceof Error ? e.message : String(e)}`,
-    }
+    const reason = `Metadata lookup failed: ${e instanceof Error ? e.message : String(e)}`
+    console.warn('[notify] skipped', { username: input.username, rating_key: input.rating_key, reason })
+    return { notified: false, reason }
   }
 
-  const allowed = parseLibraries(settings.libraries)
-  if (allowed.length && !allowed.includes(String(meta.section_id ?? ''))) {
-    const where = meta.library_name || `section ${meta.section_id ?? '?'}`
-    return { notified: false, reason: `Library "${where}" is not selected in Settings` }
-  }
+  const gate = libraryGateReason(settings, meta)
+  if (gate) return { notified: false, reason: gate }
 
   remember(input.username, input.rating_key, now)
 

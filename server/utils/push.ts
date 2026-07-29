@@ -27,10 +27,6 @@ export function ensureVapidKeys(): { publicKey: string; privateKey: string } {
   return fresh
 }
 
-export function vapidPublicKey(): string {
-  return ensureVapidKeys().publicKey
-}
-
 export interface SendResult {
   sent: number
   failed: number

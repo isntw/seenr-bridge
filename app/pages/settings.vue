@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Mapping, PlexLinkStatus, TestResult } from '../../shared/types'
+import type { Mapping, PlexLinkStatus, Settings, TestResult } from '../../shared/types'
 import { apiErrorMessage } from '../../shared/errors'
 
 const store = useSettingsStore()
@@ -39,10 +39,7 @@ function toggleTrigger(key: string, checked: boolean) {
 const push = usePush()
 const testingPush = ref(false)
 
-onMounted(() => {
-  push.refresh()
-  loadWebhookSecret()
-})
+onMounted(() => push.refresh())
 
 const webhookSecret = ref('')
 
@@ -63,28 +60,29 @@ const webhookHeaders = computed(() =>
   }),
 )
 
+const notifyBusy = ref(false)
+
+async function saveNotify(patch: Partial<Settings>, ok: string) {
+  if (notifyBusy.value) return
+  notifyBusy.value = true
+  try {
+    await store.save(patch)
+    toast.add({ title: ok, color: 'success' })
+  } catch (e) {
+    toast.add({ title: apiErrorMessage(e, 'Could not save.'), color: 'error' })
+  } finally {
+    notifyBusy.value = false
+  }
+}
+
 const notifyEnabled = computed({
   get: () => !!store.settings?.notify_enabled,
-  set: (v: boolean) => {
-    if (v && !selectedTriggers.value.includes('play')) selectedTriggers.value.push('play')
-    store.save({ notify_enabled: v }).catch((e) =>
-      toast.add({ title: apiErrorMessage(e, 'Could not save'), color: 'error' }),
-    )
-  },
+  set: (v: boolean) =>
+    saveNotify(
+      { notify_enabled: v },
+      v ? 'Notifications on — sync to Tautulli to finish.' : 'Notifications off.',
+    ),
 })
-
-let triggersSeeded = false
-watch(
-  () => store.settings,
-  (s) => {
-    if (!s || triggersSeeded) return
-    triggersSeeded = true
-    if (s.notify_enabled && !selectedTriggers.value.includes('play')) {
-      selectedTriggers.value.push('play')
-    }
-  },
-  { immediate: true },
-)
 
 const notifyUsers = computed(() => store.settings?.notify_users ?? [])
 
@@ -92,10 +90,17 @@ function toggleNotifyUser(username: string, on: boolean) {
   const next = on
     ? [...notifyUsers.value, username]
     : notifyUsers.value.filter((u) => u !== username)
-  store.save({ notify_users: next }).catch((e) =>
-    toast.add({ title: apiErrorMessage(e, 'Could not save'), color: 'error' }),
+  saveNotify(
+    { notify_users: next },
+    on ? `You'll be notified when ${username} starts watching.` : `Stopped notifying about ${username}.`,
   )
 }
+
+const notifySummary = computed(() => {
+  if (!notifyUsers.value.length) return 'nobody selected'
+  const who = notifyUsers.value.join(', ')
+  return notifyEnabled.value ? who : `${who} · paused`
+})
 
 async function sendTestPush() {
   testingPush.value = true
@@ -119,10 +124,15 @@ const newUser = ref('')
 const newToken = ref('')
 const edit = ref<Mapping | null>(null)
 const advanced = ref(false)
+const notifications = ref(false)
 const manual = ref(false)
 const testPanel = ref(false)
 
-const TEST_ACTIONS = ['watched', 'stop', 'pause', 'resume']
+watch(manual, (open) => {
+  if (open && !webhookSecret.value) loadWebhookSecret()
+})
+
+const TEST_ACTIONS = ['watched', 'play', 'stop', 'pause', 'resume']
 const testRatingKey = ref('')
 const testUsername = ref('')
 const testAction = ref('watched')
@@ -335,7 +345,7 @@ async function runSync() {
       color: 'success',
     })
     status.refresh()
-    loadWebhookSecret()
+    if (r.secret) webhookSecret.value = r.secret
   } catch (e) {
     toast.add({ title: apiErrorMessage(e, 'Sync failed.'), color: 'error' })
   } finally {
@@ -988,12 +998,57 @@ async function runTest(dryRun: boolean) {
       </p>
     </SetupStep>
 
-    <SetupStep
-      :n="4"
+    <div class="flex items-center gap-3 pt-2">
+      <hr class="flex-1 border-muted" />
+      <span class="text-xs uppercase tracking-wider text-dimmed">More</span>
+      <hr class="flex-1 border-muted" />
+    </div>
+    <DisclosureCard
+      v-model:open="notifications"
       title="Notifications"
-      badge="optional"
-      hint="get a push when someone starts watching, and count it for a co-watcher"
+      :summary="notifySummary"
     >
+      <div class="space-y-1">
+        <p class="text-sm font-medium text-highlighted">Notify me when these people start watching</p>
+        <p class="text-xs text-dimmed">
+          Tap the notification to count their watch for someone — useful when you sit down together.
+        </p>
+      </div>
+
+      <div v-if="!store.tautulliUsers.length" class="text-xs text-dimmed">
+        No Tautulli users found yet — check the connection above.
+      </div>
+      <div v-else class="flex flex-wrap gap-2" role="group" aria-label="People to be notified about">
+        <UButton
+          v-for="u in store.tautulliUsers"
+          :key="u"
+          :color="notifyUsers.includes(u) ? 'primary' : 'neutral'"
+          :variant="notifyUsers.includes(u) ? 'subtle' : 'outline'"
+          :leading-icon="notifyUsers.includes(u) ? 'i-lucide-check' : undefined"
+          :aria-pressed="notifyUsers.includes(u)"
+          :disabled="notifyBusy"
+          :label="u"
+          @click="toggleNotifyUser(u, !notifyUsers.includes(u))"
+        />
+      </div>
+
+      <div class="flex items-start justify-between gap-4">
+        <div class="min-w-0">
+          <p class="text-sm font-medium text-highlighted">Send notifications</p>
+          <p class="mt-0.5 text-xs text-dimmed">
+            Needs the <strong class="text-default">Play</strong> trigger, which a sync adds automatically.
+          </p>
+        </div>
+        <USwitch v-model="notifyEnabled" :disabled="notifyBusy" class="mt-0.5 shrink-0" />
+      </div>
+
+      <USeparator />
+
+      <div class="space-y-1">
+        <p class="text-sm font-medium text-highlighted">This device</p>
+        <p class="text-xs text-dimmed">Each phone or browser opts in separately.</p>
+      </div>
+
       <UAlert
         v-if="push.state.value === 'insecure'"
         color="warning"
@@ -1026,107 +1081,63 @@ async function runTest(dryRun: boolean) {
         title="Notifications are blocked"
         description="You declined the permission prompt for this site. Re-allow notifications in your browser's site settings, then reload."
       />
+      <div v-else class="flex items-center justify-between gap-4">
+        <p class="min-w-0 text-sm text-muted">
+          {{ push.state.value === 'subscribed' ? 'This device is receiving them.' : 'This device is not receiving them yet.' }}
+        </p>
+        <UButton
+          :loading="push.busy.value"
+          :color="push.state.value === 'subscribed' ? 'neutral' : 'primary'"
+          :variant="push.state.value === 'subscribed' ? 'subtle' : 'solid'"
+          :label="push.state.value === 'subscribed' ? 'Turn off' : 'Turn on'"
+          class="shrink-0"
+          @click="push.state.value === 'subscribed' ? push.disable() : push.enable()"
+        />
+      </div>
 
-      <template v-else>
-        <div class="flex items-start justify-between gap-4">
-          <div class="min-w-0">
-            <p class="text-sm font-medium text-highlighted">This device</p>
-            <p class="mt-0.5 text-xs text-dimmed">
-              {{ push.state.value === 'subscribed' ? 'Receiving notifications.' : 'Not receiving notifications yet.' }}
-            </p>
-          </div>
-          <UButton
-            :loading="push.busy.value"
-            :color="push.state.value === 'subscribed' ? 'neutral' : 'primary'"
-            :variant="push.state.value === 'subscribed' ? 'subtle' : 'solid'"
-            :label="push.state.value === 'subscribed' ? 'Turn off' : 'Turn on'"
-            class="shrink-0"
-            @click="push.state.value === 'subscribed' ? push.disable() : push.enable()"
-          />
-        </div>
-
-        <template v-if="push.devices.value.length">
-          <hr class="border-muted" />
-          <div class="space-y-2">
-            <p class="text-xs uppercase tracking-wider text-dimmed">Devices</p>
-            <div
-              v-for="d in push.devices.value"
-              :key="d.id"
-              class="flex items-center justify-between gap-3 text-sm"
-            >
-              <span class="min-w-0 truncate text-default">{{ d.label }}</span>
-              <div class="flex shrink-0 items-center gap-2">
-                <UBadge
-                  v-if="d.fail_count > 0"
-                  color="warning"
-                  variant="subtle"
-                  size="sm"
-                  :label="`${d.fail_count} failed`"
-                />
-                <UButton
-                  icon="i-lucide-x"
-                  color="neutral"
-                  variant="ghost"
-                  size="xs"
-                  :aria-label="`Remove ${d.label}`"
-                  @click="push.forget(d.id)"
-                />
-              </div>
+      <template v-if="push.devices.value.length">
+        <USeparator />
+        <div class="space-y-3">
+          <p class="text-xs uppercase tracking-wider text-dimmed">Subscribed devices</p>
+          <div
+            v-for="d in push.devices.value"
+            :key="d.id"
+            class="flex items-center justify-between gap-3"
+          >
+            <span class="min-w-0 truncate text-sm text-default">{{ d.label }}</span>
+            <div class="flex shrink-0 items-center gap-2">
+              <UBadge
+                v-if="d.fail_count > 0"
+                color="warning"
+                variant="subtle"
+                size="sm"
+                :label="`${d.fail_count} failed`"
+              />
+              <UButton
+                icon="i-lucide-x"
+                color="neutral"
+                variant="ghost"
+                size="xs"
+                :aria-label="`Remove ${d.label}`"
+                @click="push.forget(d.id)"
+              />
             </div>
           </div>
-          <div class="flex sm:justify-end">
-            <UButton
-              :loading="testingPush"
-              color="neutral"
-              variant="subtle"
-              label="Send a test"
-              icon="i-lucide-send"
-              class="w-full justify-center sm:w-auto"
-              @click="sendTestPush"
-            />
-          </div>
-        </template>
-      </template>
-
-      <hr class="border-muted" />
-
-      <div class="flex items-start justify-between gap-4">
-        <div class="min-w-0">
-          <p class="text-sm font-medium text-highlighted">Notify on playback</p>
-          <p class="mt-0.5 text-xs text-dimmed">
-            Needs the <strong class="text-default">Play</strong> trigger on the webhook above, then a re-sync.
-          </p>
         </div>
-        <USwitch v-model="notifyEnabled" class="shrink-0" />
-      </div>
-
-      <div v-if="notifyEnabled" class="space-y-2">
-        <p class="text-xs text-dimmed">
-          Whose playback should notify you? Nobody is selected by default.
-        </p>
-        <div v-if="!store.tautulliUsers.length" class="text-xs text-dimmed">
-          No Tautulli users found yet — check the connection above.
-        </div>
-        <div v-else class="flex flex-wrap gap-2" role="group" aria-label="Users to notify for">
+        <div class="flex sm:justify-end">
           <UButton
-            v-for="u in store.tautulliUsers"
-            :key="u"
-            :color="notifyUsers.includes(u) ? 'primary' : 'neutral'"
-            :variant="notifyUsers.includes(u) ? 'subtle' : 'outline'"
-            :leading-icon="notifyUsers.includes(u) ? 'i-lucide-check' : undefined"
-            :aria-pressed="notifyUsers.includes(u)"
-            :label="u"
-            @click="toggleNotifyUser(u, !notifyUsers.includes(u))"
+            :loading="testingPush"
+            color="neutral"
+            variant="subtle"
+            label="Send a test"
+            icon="i-lucide-send"
+            class="w-full justify-center sm:w-auto"
+            @click="sendTestPush"
           />
         </div>
-      </div>
-    </SetupStep>
+      </template>
+    </DisclosureCard>
 
-    <div class="flex items-center gap-3 pt-2">
-      <hr class="flex-1 border-muted" />
-      <span class="text-xs uppercase tracking-wider text-dimmed">More</span>
-      <hr class="flex-1 border-muted" />
-    </div>
 
     <DisclosureCard v-model:open="advanced" title="Advanced" summary="seenr URL · bridge URL">
       <UFormField label="seenr base URL" help="each user's token is appended to this">

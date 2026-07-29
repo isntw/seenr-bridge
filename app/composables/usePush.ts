@@ -129,9 +129,7 @@ export function usePush() {
       const sub = await currentSubscription()
       await sub?.unsubscribe()
       state.value = 'available'
-      return
     }
-    await refresh()
   }
 
   async function test() {

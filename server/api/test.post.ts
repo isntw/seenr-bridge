@@ -1,4 +1,4 @@
-import { processEvent } from '../utils/pipeline'
+import { handleIncoming } from '../utils/dispatch'
 import type { TestResult } from '../../shared/types'
 
 export default defineEventHandler(async (event): Promise<TestResult> => {
@@ -11,7 +11,7 @@ export default defineEventHandler(async (event): Promise<TestResult> => {
   }
 
   const dryRun = !!b.dryRun
-  return await processEvent(
+  return await handleIncoming(
     {
       action: String(b.action || 'watched'),
       rating_key: String(rating_key),

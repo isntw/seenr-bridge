@@ -11,6 +11,7 @@ import {
   PUBLIC_API_PATHS,
   WEBHOOK_SECRET_HEADER,
   webhookSecretValid,
+  requiresWebhookSecret,
   setSessionCookie,
   requiresAuth,
 } from '../server/utils/auth'
@@ -227,5 +228,22 @@ describe('webhook secret storage', () => {
     expect(wire).not.toContain(db.getWebhookSecret())
     expect(wire).not.toContain('webhook_secret')
     expect(wire).not.toContain('vapid_private')
+  })
+})
+
+describe('requiresWebhookSecret', () => {
+  it('claims the Tautulli webhook, which has no session to check', () => {
+    expect(requiresWebhookSecret('/api/webhook/tautulli')).toBe(true)
+  })
+
+  it('claims nothing else', () => {
+    for (const p of ['/api/settings', '/api/push/key', '/api/health', '/dashboard', '/']) {
+      expect(requiresWebhookSecret(p)).toBe(false)
+    }
+  })
+
+  it('does not match a path that merely starts with it', () => {
+    expect(requiresWebhookSecret('/api/webhook/tautulli/extra')).toBe(false)
+    expect(requiresWebhookSecret('/api/webhook/tautulli?x=1')).toBe(false)
   })
 })

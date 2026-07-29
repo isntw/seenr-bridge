@@ -9,13 +9,12 @@ import {
   type PushSubscriptionRow,
 } from './db'
 
-const VAPID_SUBJECT = 'mailto:seenr-bridge@localhost'
+const VAPID_SUBJECT = 'https://github.com/isntw/seenr-bridge'
 
 export interface PushPayload {
   title: string
   body: string
   url: string
-  /** Collapses repeats of the same session instead of stacking them. */
   tag: string
 }
 
@@ -60,12 +59,18 @@ export async function sendToAll(payload: PushPayload): Promise<SendResult> {
         markPushOk(s.id)
         sent++
       } catch (e) {
-        // 404/410 means the endpoint is permanently gone: drop it, don't retry.
-        const status = (e as { statusCode?: number }).statusCode
-        if (status === 404 || status === 410) {
+        const err = e as { statusCode?: number; body?: string; message?: string }
+        if (err.statusCode === 404 || err.statusCode === 410) {
           deletePushSubscription(s.id)
           pruned++
         } else {
+          console.error('[push] delivery failed', {
+            id: s.id,
+            label: s.label,
+            statusCode: err.statusCode,
+            body: err.body?.slice(0, 300),
+            message: err.message,
+          })
           markPushFailed(s.id)
           failed++
         }

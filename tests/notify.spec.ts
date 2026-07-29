@@ -60,7 +60,6 @@ async function load() {
   return { db, notify }
 }
 
-/** Notifications on, and `who` in the notify list. */
 function enable(
   db: typeof import('../server/utils/db'),
   who: string[] = ['alice'],
@@ -114,8 +113,6 @@ describe('handlePlaybackStart', () => {
     expect(sendToAll).not.toHaveBeenCalled()
   })
 
-  // The inverse of settings.libraries: an empty list must notify NOBODY, so enabling
-  // the feature never starts buzzing about every account on the server.
   it('notifies nobody when the user list is empty', async () => {
     const { db, notify } = await load()
     enable(db, [])

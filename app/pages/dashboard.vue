@@ -14,7 +14,6 @@ const focus = computed(() => {
   return rating_key && username ? { rating_key, username } : null
 })
 
-// Cleared once the dialog is open so a reload doesn't reopen it.
 function clearFocus() {
   const q = { ...route.query }
   delete q.watch

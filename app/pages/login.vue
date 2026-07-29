@@ -1,4 +1,11 @@
 <script setup lang="ts">
+const route = useRoute()
+
+function afterLogin() {
+  const r = typeof route.query.redirect === 'string' ? route.query.redirect : ''
+  return r.startsWith('/') && !r.startsWith('//') ? r : '/dashboard'
+}
+
 import { VERSION } from '../../shared/version'
 import { apiErrorMessage } from '../../shared/errors'
 
@@ -45,7 +52,7 @@ async function signInWithPlex() {
           // it has done its job.
           plexPopup.value?.close()
           plexPopup.value = null
-          await navigateTo('/dashboard')
+          await navigateTo(afterLogin())
           return
         }
       } catch (e) {
@@ -90,7 +97,7 @@ async function submit() {
   try {
     if (isSetup.value) await auth.register(username.value, password.value)
     else await auth.login(username.value, password.value)
-    await navigateTo('/dashboard')
+    await navigateTo(afterLogin())
   } catch (e) {
     error.value = apiErrorMessage(e, 'Something went wrong.')
   } finally {

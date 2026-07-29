@@ -3,12 +3,10 @@ import { getMetadata } from './tautulli'
 import { sendToAll, type SendResult } from './push'
 import type { IncomingEvent, TautulliMetadata } from '../../shared/types'
 
-// Tautulli fires `play` on every play, and some clients fire it twice for one press.
 const DEDUPE_WINDOW_MS = 30 * 60 * 1000
 
 const recent = new Map<string, number>()
 
-/** Keeps module state from leaking between spec files. */
 export function resetNotifyDedupe(): void {
   recent.clear()
 }
@@ -18,15 +16,15 @@ function dedupeKey(username: string, ratingKey: string): string {
 }
 
 function seenRecently(username: string, ratingKey: string, now: number): boolean {
-  const key = dedupeKey(username, ratingKey)
-  const last = recent.get(key)
-  if (last !== undefined && now - last < DEDUPE_WINDOW_MS) return true
+  const last = recent.get(dedupeKey(username, ratingKey))
+  return last !== undefined && now - last < DEDUPE_WINDOW_MS
+}
 
+function remember(username: string, ratingKey: string, now: number): void {
   for (const [k, ts] of recent) {
     if (now - ts >= DEDUPE_WINDOW_MS) recent.delete(k)
   }
-  recent.set(key, now)
-  return false
+  recent.set(dedupeKey(username, ratingKey), now)
 }
 
 function showOrTitle(m: TautulliMetadata): string {
@@ -48,9 +46,6 @@ export interface NotifyResult {
   send?: SendResult
 }
 
-/** Notify, never scrobble. Separate from processEvent() because that returns before
- *  its metadata lookup for an unmapped user, who is exactly who this is for. Writes no
- *  events row: that table is capped at 1000 and trimmed on every insert. */
 export async function handlePlaybackStart(
   input: IncomingEvent,
   opts: { now?: number } = {},
@@ -62,7 +57,6 @@ export async function handlePlaybackStart(
   if (!settings.tautulli_url || !settings.tautulli_apikey)
     return { notified: false, reason: 'Tautulli connection not configured' }
 
-  // Empty means nobody, unlike settings.libraries where empty means all.
   const watched = parseNotifyUsers(settings.notify_users)
   if (!watched.some((u) => u.toLowerCase() === input.username.toLowerCase()))
     return { notified: false, reason: `Not notifying for "${input.username}"` }
@@ -85,6 +79,8 @@ export async function handlePlaybackStart(
     const where = meta.library_name || `section ${meta.section_id ?? '?'}`
     return { notified: false, reason: `Library "${where}" is not selected in Settings` }
   }
+
+  remember(input.username, input.rating_key, now)
 
   const send = await sendToAll({
     title: `${input.username} started ${showOrTitle(meta)}`,

@@ -30,8 +30,6 @@ function deviceLabel(): string {
   return 'This device'
 }
 
-// Returns Uint8Array<ArrayBuffer> explicitly: the default ArrayBufferLike could be a
-// SharedArrayBuffer, which pushManager.subscribe's BufferSource does not accept.
 function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
   const padded = (base64 + '='.repeat((4 - (base64.length % 4)) % 4))
     .replace(/-/g, '+')
@@ -56,8 +54,6 @@ export function usePush() {
   async function refresh() {
     if (!import.meta.client) return
 
-    // iOS exposes no PushManager at all until the PWA is installed, so the
-    // install hint has to be checked before the generic unsupported case.
     if (!window.isSecureContext) return void (state.value = 'insecure')
     if (isApple() && !isStandalone()) return void (state.value = 'needs-install')
     if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
@@ -129,6 +125,12 @@ export function usePush() {
   async function forget(id: number) {
     await $fetch(`/api/push/devices/${id}`, { method: 'DELETE' })
     await loadDevices()
+    if (!devices.value.length) {
+      const sub = await currentSubscription()
+      await sub?.unsubscribe()
+      state.value = 'available'
+      return
+    }
     await refresh()
   }
 

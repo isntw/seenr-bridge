@@ -1,5 +1,6 @@
 import type { H3Event } from 'h3'
 import { processEvent } from '../../utils/pipeline'
+import { handlePlaybackStart } from '../../utils/notify'
 
 // Matches the legacy Express body-parser limit — generous for a payload of
 // three short fields (rating_key, username, action). This is the one
@@ -73,20 +74,34 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  // Respond fast; enrich and forward in the background so Tautulli never
-  // waits on the seenr round-trip. Failures are recorded to the events
-  // table — that table is this endpoint's error log.
-  const work = processEvent({
+  const incoming = {
     action: String(action),
     rating_key: String(rating_key),
     username: String(username),
-  }).catch((err) => {
+  }
+
+  // `play` notifies and does NOT scrobble. processEvent() does not branch on
+  // action, so routing play through it would forward media.play to seenr, consume
+  // and delete the pending_watches rows at play time — destroying the
+  // watch-together window the notification exists to open — and mark co-watchers'
+  // Plex copies watched at 0% progress. stop/pause/resume keep their existing
+  // route so no configured notifier changes meaning.
+  const isPlaybackStart = incoming.action.toLowerCase().replace(/^on_/, '') === 'play'
+
+  // Respond fast; enrich and forward in the background so Tautulli never
+  // waits on the seenr round-trip. Failures are recorded to the events
+  // table — that table is this endpoint's error log.
+  const work = (
+    isPlaybackStart ? handlePlaybackStart(incoming) : processEvent(incoming)
+  ).catch((err) => {
     // processEvent already records its own failures to the events table;
     // reaching this catch means that recording itself threw, so this is
-    // the only place left to leave a trace.
-    console.error('[webhook/tautulli] processEvent failed', {
-      rating_key: String(rating_key),
-      username: String(username),
+    // the only place left to leave a trace. handlePlaybackStart writes no rows
+    // at all, so for a play event this log is the only trace there will be.
+    console.error('[webhook/tautulli] processing failed', {
+      action: incoming.action,
+      rating_key: incoming.rating_key,
+      username: incoming.username,
       error: err instanceof Error ? err.message : String(err),
     })
   })

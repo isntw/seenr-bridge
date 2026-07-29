@@ -2,6 +2,25 @@
 
 Notable changes per release. Versions follow [semantic versioning](https://semver.org).
 
+## 2.6.0
+
+### Added
+
+- **Installable on a phone.** The bridge now ships a web app manifest, so it can
+  be added to an iPhone or Android home screen and launches standalone, without
+  browser chrome. Requires an HTTPS origin — a plain-http LAN address cannot be
+  installed.
+- New app icon: a violet-to-fuchsia gradient mark matching the sidebar badge,
+  including a maskable variant so Android does not crop the corners. The favicon
+  is the same mark, replacing a 27KB embedded raster with real vector.
+- A service worker, deliberately with no caching, so the app is installable and
+  push notifications have somewhere to attach later.
+
+### Fixed
+
+- The layout now respects display cut-outs. Content no longer sits under the
+  status bar or the home indicator when launched from the home screen.
+
 ## 2.5.0
 
 ### Added

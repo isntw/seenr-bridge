@@ -1,5 +1,5 @@
 import { getSettings } from '../../utils/db'
-import { posterSignatureValid } from '../../utils/poster'
+import { verifiedPosterBox } from '../../utils/poster'
 import { fetchImage } from '../../utils/tautulli'
 
 // Public, unlike /api/image: the browser fetches notification art with no page in
@@ -8,7 +8,14 @@ export default defineEventHandler(async (event) => {
   const q = getQuery(event)
   const imgPath = String(q.path || '')
 
-  if (!posterSignatureValid(imgPath, String(q.exp || ''), String(q.sig || ''))) {
+  const box = verifiedPosterBox(
+    imgPath,
+    String(q.w || ''),
+    String(q.h || ''),
+    String(q.exp || ''),
+    String(q.sig || ''),
+  )
+  if (!box) {
     throw createError({ statusCode: 403, statusMessage: 'invalid or expired signature' })
   }
 
@@ -24,7 +31,7 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const img = await fetchImage(s.tautulli_url, s.tautulli_apikey, imgPath, 512, 512)
+    const img = await fetchImage(s.tautulli_url, s.tautulli_apikey, imgPath, box.w, box.h)
     if (!img) throw createError({ statusCode: 404, statusMessage: 'not found' })
 
     setHeader(event, 'Content-Type', img.contentType)

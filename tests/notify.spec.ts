@@ -401,8 +401,21 @@ describe('handlePlaybackStart', () => {
 
     const q = new URLSearchParams(sendToAll.mock.calls[0]![0].icon!.split('?')[1])
     expect(
-      poster.posterSignatureValid(q.get('path')!, q.get('exp')!, q.get('sig')!, 1_000_000),
-    ).toBe(true)
+      poster.verifiedPosterBox(
+        q.get('path')!, q.get('w')!, q.get('h')!, q.get('exp')!, q.get('sig')!, 1_000_000,
+      ),
+    ).toEqual({ w: 384, h: 576 })
+  })
+
+  it('asks for the poster at 2:3 and the still at 16:9, never a square', async () => {
+    const { db, notify } = await load()
+    enable(db)
+
+    await notify.handlePlaybackStart(play)
+
+    const { icon, image } = sendToAll.mock.calls[0]![0]
+    expect(icon).toContain('w=384&h=576')
+    expect(image).toContain('w=1280&h=720')
   })
 
   it('sends a movie its poster and no wide art, which would be cropped', async () => {

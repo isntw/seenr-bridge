@@ -2,6 +2,25 @@
 
 Notable changes per release. Versions follow [semantic versioning](https://semver.org).
 
+## 2.6.5
+
+### Fixed
+
+- **The poster in a notification was squashed.** Tautulli resizes art to exactly the
+  box it is asked for, and 2.6.3 asked for a square — so every 2:3 poster came back
+  stretched. Posters are now requested at 2:3 and episode stills at 16:9, the shapes
+  they actually are. The box is part of the URL's signature, so it cannot be edited
+  back into a square by anyone holding the link.
+- **The notification worker now updates itself.** The app asks the running worker
+  its version on launch and replaces it only when it differs, which also covers a
+  worker too old to answer. Nothing to notice and nothing to press.
+
+### Removed
+
+- **The "Notification worker" row in Settings.** It existed to report a stale worker
+  and offer an Update button; the app now handles that on its own, so it was
+  showing plumbing rather than anything to act on.
+
 ## 2.6.4
 
 ### Fixed

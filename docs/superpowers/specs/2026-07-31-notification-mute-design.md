@@ -115,7 +115,7 @@ CREATE TABLE IF NOT EXISTS notify_mutes (
   subject_key TEXT PRIMARY KEY,
   title       TEXT NOT NULL,
   media_type  TEXT NOT NULL,
-  created_at  INTEGER NOT NULL
+  created     INTEGER NOT NULL
 )
 ```
 

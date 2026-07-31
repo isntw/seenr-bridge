@@ -2,6 +2,37 @@
 
 Notable changes per release. Versions follow [semantic versioning](https://semver.org).
 
+## 2.6.2
+
+### Added
+
+- **Mute a show you don't watch.** A binge of a 100-episode sitcom used to mean 100
+  notifications. Muting is a switch in the Watch together dialog, a button on the
+  notification itself where the platform supports one, and a list under Settings →
+  Notifications to undo it. A mute covers the show whoever plays it, and lasts
+  until you turn it back on.
+
+### Changed
+
+- **One notification per show, not per episode.** Notifications were deduplicated
+  by episode, and every episode is a new episode — so the 30-minute window never
+  applied to a binge. They are now deduplicated by show over six hours, and each
+  new episode pushes that window back, so a run of episodes stays quiet. The
+  lock-screen entry is also replaced rather than stacked.
+- **Clearer notification wording.** The title now carries what is playing
+  ("Severance — S2·E4 · Woe's Hollow") and the body who started it ("Started by
+  alice · Watch together →"). iOS already prints the app name above the title, so
+  the username was taking space it did not need, and the action now uses the same
+  name as the button it opens.
+
+### Fixed
+
+- **Tapping a notification no longer opens an empty dialog** for a title you had
+  already shared. The dialog fills itself in from the shared titles and pending
+  watches, but a notification opened it before those had loaded — so nobody
+  appeared selected, and saving from that state removed everyone from the share.
+  It now waits for its data.
+
 ## 2.6.1
 
 ### Fixed

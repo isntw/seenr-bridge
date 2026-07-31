@@ -39,28 +39,39 @@ const { data: activity, refresh: refreshActivity } = useAsyncData<ActivitySessio
   { default: (): ActivitySession[] => [], lazy: true },
 )
 
-const { data: mappings } = useAsyncData<Mapping[]>(
+const { data: mappings, status: mappingsStatus } = useAsyncData<Mapping[]>(
   'mappings',
   () => $fetch('/api/mappings'),
   { default: (): Mapping[] => [], lazy: true },
 )
 
-const { data: shares, refresh: refreshShares } = useAsyncData<SharedTitle[]>(
+const { data: shares, refresh: refreshShares, status: sharesStatus } = useAsyncData<SharedTitle[]>(
   'shares',
   () => $fetch('/api/shared'),
   { default: (): SharedTitle[] => [], lazy: true },
 )
 
-const { data: pending, refresh: refreshPending } = useAsyncData<PendingWatchEntry[]>(
+const {
+  data: pending, refresh: refreshPending, status: pendingStatus,
+} = useAsyncData<PendingWatchEntry[]>(
   'pending',
   () => $fetch('/api/pending'),
   { default: (): PendingWatchEntry[] => [], lazy: true },
 )
 
-const { data: mutes, refresh: refreshMutes } = useAsyncData<NotifyMute[]>(
+const { data: mutes, refresh: refreshMutes, status: mutesStatus } = useAsyncData<NotifyMute[]>(
   'mutes',
   () => $fetch('/api/notify/mutes'),
   { default: (): NotifyMute[] => [], lazy: true },
+)
+
+// The Watch-together dialog seeds itself from these, and a notification opens it
+// on first paint — so it must not open until they have landed. Resolved, not
+// successful, is the bar: an errored /api/shared must not wedge the dialog shut.
+const watchTogetherReady = computed(() =>
+  [sharesStatus, pendingStatus, mappingsStatus, mutesStatus].every(
+    (s) => s.value === 'success' || s.value === 'error',
+  ),
 )
 
 function refreshWatchTogether() {
@@ -117,6 +128,7 @@ const remaining = computed(() =>
       :pending="pending ?? []"
       :mutes="mutes ?? []"
       :focus="focus"
+      :ready="watchTogetherReady"
       @changed="refreshWatchTogether()"
       @focused="clearFocus()"
     />

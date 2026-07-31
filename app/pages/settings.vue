@@ -3,6 +3,7 @@ import type {
   Mapping, NotifyMute, PlexLinkStatus, Settings, TestResult,
 } from '../../shared/types'
 import { apiErrorMessage } from '../../shared/errors'
+import { VERSION } from '../../shared/version'
 import { timeAgo } from '../utils/time-ago'
 
 const store = useSettingsStore()
@@ -119,6 +120,16 @@ const DELIVERY = {
 } as const
 
 const deliveryDetail = computed(() => DELIVERY[push.state.value])
+
+const workerStale = computed(() => push.workerVersion.value !== VERSION)
+
+const workerDetail = computed(() =>
+  push.workerVersion.value
+    ? workerStale.value
+      ? `v${push.workerVersion.value} — the app is v${VERSION}. Update to get the poster and buttons.`
+      : `v${push.workerVersion.value} — up to date`
+    : 'Older than this feature — update to get the poster and buttons.',
+)
 
 const canToggleDelivery = computed(() =>
   push.state.value === 'subscribed' || push.state.value === 'available',
@@ -1140,6 +1151,26 @@ async function runTest(dryRun: boolean) {
           :label="push.state.value === 'subscribed' ? 'Turn off' : 'Turn on'"
           class="mt-0.5 shrink-0"
           @click="push.state.value === 'subscribed' ? push.disable() : push.enable()"
+        />
+      </div>
+
+      <!-- The worker draws the notification, so a stale one shows the old icon and
+           no buttons while the app reports the server's version. -->
+      <div v-if="push.state.value === 'subscribed'" class="flex items-start justify-between gap-4">
+        <div class="min-w-0">
+          <p class="text-sm font-medium text-highlighted">Notification worker</p>
+          <p class="mt-0.5 text-xs" :class="workerStale ? 'text-warning' : 'text-dimmed'">
+            {{ workerDetail }}
+          </p>
+        </div>
+        <UButton
+          v-if="workerStale"
+          color="primary"
+          variant="subtle"
+          :loading="push.busy.value"
+          label="Update"
+          class="mt-0.5 shrink-0"
+          @click="push.updateWorker()"
         />
       </div>
 

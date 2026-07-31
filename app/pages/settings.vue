@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import type { Mapping, PlexLinkStatus, Settings, TestResult } from '../../shared/types'
+import type {
+  Mapping, NotifyMute, PlexLinkStatus, Settings, TestResult,
+} from '../../shared/types'
 import { apiErrorMessage } from '../../shared/errors'
 import { timeAgo } from '../utils/time-ago'
 
@@ -126,10 +128,30 @@ function deviceWhen(d: { last_ok: number | null; created: number }) {
   return d.last_ok ? timeAgo(d.last_ok) : 'no sends yet'
 }
 
+const { data: notifyMutes, refresh: refreshNotifyMutes } = useAsyncData<NotifyMute[]>(
+  'notify-mutes',
+  () => $fetch('/api/notify/mutes'),
+  { default: (): NotifyMute[] => [], lazy: true },
+)
+
+async function unmute(m: NotifyMute) {
+  notifyBusy.value = true
+  try {
+    await $fetch('/api/notify/mutes', { method: 'DELETE', body: { subject_key: m.subject_key } })
+    await refreshNotifyMutes()
+    toast.add({ title: `Notifications for ${m.title} are back on.`, color: 'success' })
+  } catch (e) {
+    toast.add({ title: apiErrorMessage(e, 'Could not unmute that.'), color: 'error' })
+  } finally {
+    notifyBusy.value = false
+  }
+}
+
 const notifySummary = computed(() => {
   if (!notifyEnabled.value) return 'off'
   const who = notifyUsers.value.length ? `you + ${notifyUsers.value.join(', ')}` : 'you only'
-  return who
+  const muted = notifyMutes.value?.length
+  return muted ? `${who} · ${muted} muted` : who
 })
 
 async function sendTestPush() {
@@ -1073,6 +1095,35 @@ async function runTest(dryRun: boolean) {
         </div>
         <USwitch v-model="notifyEnabled" :disabled="notifyBusy" class="mt-0.5 shrink-0" />
       </div>
+
+      <!-- Absent rather than empty: the only place a mute set from a notification
+           can be found, but nothing to explain until there is one. -->
+      <template v-if="notifyMutes?.length">
+        <USeparator />
+        <div class="space-y-1">
+          <p class="text-sm font-medium text-highlighted">Muted</p>
+          <p class="text-xs text-dimmed">These never notify, whoever plays them.</p>
+        </div>
+        <div class="space-y-2">
+          <div
+            v-for="m in notifyMutes"
+            :key="m.subject_key"
+            class="flex items-center justify-between gap-3"
+          >
+            <p class="min-w-0 truncate text-sm text-default">{{ m.title }}</p>
+            <UButton
+              color="neutral"
+              variant="subtle"
+              size="sm"
+              icon="i-lucide-bell"
+              :disabled="notifyBusy"
+              label="Unmute"
+              class="shrink-0"
+              @click="unmute(m)"
+            />
+          </div>
+        </div>
+      </template>
 
       <USeparator />
 

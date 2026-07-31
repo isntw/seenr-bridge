@@ -133,6 +133,14 @@ export interface ActivitySession {
   show_guid: string
 }
 
+export interface NotifyMute {
+  /** The show's rating_key for an episode, the item's own otherwise. */
+  subject_key: string
+  title: string
+  media_type: string
+  created: number
+}
+
 export interface PendingWatchEntry {
   rating_key: string
   mapping_id: number

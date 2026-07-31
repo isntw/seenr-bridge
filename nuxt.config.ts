@@ -41,6 +41,16 @@ export default defineNuxtConfig({
     clientBundle: { scan: true },
   },
 
+  // Nitro serves /public with no Cache-Control at all, which leaves the browser
+  // applying heuristic freshness (~10% of the file's age) and answering the service
+  // worker's own update check from its HTTP cache. A stale worker keeps drawing
+  // notifications with whatever icon and actions it was built with, while the page
+  // and payloads come from the current server — so the app reports the new version
+  // and the notification looks like the old build. Seen live on 2.6.3.
+  routeRules: {
+    '/sw.js': { headers: { 'cache-control': 'no-cache' } },
+  },
+
   nitro: {
     preset: 'node-server',
 

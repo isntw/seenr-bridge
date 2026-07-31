@@ -2,6 +2,25 @@
 
 Notable changes per release. Versions follow [semantic versioning](https://semver.org).
 
+## 2.6.4
+
+### Fixed
+
+- **Notifications kept looking like an older build after an upgrade.** `sw.js` was
+  served with no `Cache-Control` at all, so a browser could answer the service
+  worker's own update check from its cache and keep running the previous worker for
+  hours. The worker is what draws the notification, so the poster and the Mute
+  button were missing while the app itself reported the new version — the two are
+  served by different things. It is now sent as `no-cache`, so every update check
+  reaches the server.
+
+### Added
+
+- **Settings → Notifications shows the notification worker's version**, and offers
+  an Update button when it lags behind the app. Until now nothing in the UI could
+  tell a stale worker from a current one: the version on screen comes from the
+  server, so the app read as up to date while notifications did not.
+
 ## 2.6.3
 
 ### Added

@@ -1,5 +1,15 @@
+// Kept in step with shared/version.ts by a test, because this is the only way to
+// tell which worker a device is actually running: the version in the UI comes from
+// the server, so a stale worker and a current server look identical.
+const SW_VERSION = '2.6.4'
+
 self.addEventListener('install', () => self.skipWaiting())
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()))
+
+self.addEventListener('message', (event) => {
+  if (event.data !== 'version') return
+  event.source?.postMessage({ swVersion: SW_VERSION })
+})
 
 self.addEventListener('push', (event) => {
   let p = {}

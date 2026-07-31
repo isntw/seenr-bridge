@@ -45,6 +45,7 @@ export function usePush() {
   const devices = ref<PushDevice[]>([])
   const busy = ref(false)
   const ownFingerprint = ref('')
+  const workerVersion = ref('')
 
   async function fingerprintOf(endpoint: string): Promise<string> {
     const bytes = new TextEncoder().encode(endpoint)
@@ -70,6 +71,7 @@ export function usePush() {
 
     state.value = (await currentSubscription()) ? 'subscribed' : 'available'
     if (state.value === 'subscribed') await loadDevices()
+    await loadWorkerVersion()
   }
 
   async function loadDevices() {
@@ -147,5 +149,46 @@ export function usePush() {
     })
   }
 
-  return { state, devices, busy, ownFingerprint, refresh, enable, disable, forget, test }
+  // The worker draws the notification — its icon and its buttons — so when it is
+  // stale the app still reports the server's version while notifications look like
+  // the old build. Ask the worker itself.
+  async function readWorkerVersion(): Promise<string> {
+    if (!('serviceWorker' in navigator)) return ''
+    const reg = await navigator.serviceWorker.getRegistration()
+    if (!reg?.active) return ''
+
+    return await new Promise<string>((resolve) => {
+      const channel = new MessageChannel()
+      const timer = setTimeout(() => resolve(''), 1500)
+      channel.port1.onmessage = (e: MessageEvent) => {
+        clearTimeout(timer)
+        resolve(String(e.data?.swVersion || ''))
+      }
+      // A worker predating the message handler never replies; the timeout is what
+      // reports that, and an empty string renders as "unknown — needs updating".
+      reg.active!.postMessage('version', [channel.port2])
+    })
+  }
+
+  async function loadWorkerVersion() {
+    workerVersion.value = await readWorkerVersion()
+  }
+
+  /** Fetches sw.js bypassing the HTTP cache, then activates it. */
+  async function updateWorker() {
+    busy.value = true
+    try {
+      const reg = await navigator.serviceWorker.getRegistration()
+      await reg?.update()
+      await navigator.serviceWorker.ready
+      await loadWorkerVersion()
+    } finally {
+      busy.value = false
+    }
+  }
+
+  return {
+    state, devices, busy, ownFingerprint, workerVersion,
+    refresh, enable, disable, forget, test, loadWorkerVersion, updateWorker,
+  }
 }

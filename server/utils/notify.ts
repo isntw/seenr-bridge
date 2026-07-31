@@ -92,8 +92,8 @@ export async function handlePlaybackStart(
   remember(input.username, input.rating_key, now)
 
   const send = await sendToAll({
-    title: `${input.username} started ${showOrTitle(meta)}`,
-    body: [detail(meta), 'Tap to count it for someone'].filter(Boolean).join(' — '),
+    title: [showOrTitle(meta), detail(meta)].filter(Boolean).join(' — '),
+    body: `Started by ${input.username} · Watch together →`,
     url: `/dashboard?watch=${encodeURIComponent(input.rating_key)}&user=${encodeURIComponent(input.username)}`,
     tag: dedupeKey(input.username, input.rating_key),
   })

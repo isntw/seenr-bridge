@@ -286,16 +286,15 @@ describe('handlePlaybackStart', () => {
     expect(sendToAll).not.toHaveBeenCalled()
   })
 
-  it('names the show and episode for a series', async () => {
+  it('names the show and episode in the title', async () => {
     const { db, notify } = await load()
     enable(db)
 
     await notify.handlePlaybackStart(play)
 
     const payload = sendToAll.mock.calls[0]![0]
-    expect(payload.title).toBe('alice started Breaking Bad')
-    expect(payload.body).toContain('S5·E14')
-    expect(payload.body).toContain('Ozymandias')
+    expect(payload.title).toBe('Breaking Bad — S5·E14 · Ozymandias')
+    expect(payload.body).toBe('Started by alice · Watch together →')
   })
 
   it('deep-links to the watch-together dialog', async () => {
@@ -316,7 +315,17 @@ describe('handlePlaybackStart', () => {
     await notify.handlePlaybackStart({ ...play, rating_key: '555' })
 
     const payload = sendToAll.mock.calls[0]![0]
-    expect(payload.title).toBe('alice started The Matrix')
-    expect(payload.body).toContain('1999')
+    expect(payload.title).toBe('The Matrix — 1999')
+    expect(payload.body).toBe('Started by alice · Watch together →')
+  })
+
+  it('omits the dash when a movie has no year', async () => {
+    const { db, notify } = await load()
+    enable(db)
+    getMetadata.mockImplementation(async () => ({ ...movie, year: '' }))
+
+    await notify.handlePlaybackStart({ ...play, rating_key: '555' })
+
+    expect(sendToAll.mock.calls[0]![0].title).toBe('The Matrix')
   })
 })

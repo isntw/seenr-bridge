@@ -203,7 +203,7 @@ describe('handlePlaybackStart', () => {
     expect(db.listEvents(50)).toHaveLength(0)
   })
 
-  it('suppresses a repeat inside the dedupe window', async () => {
+  it('suppresses a repeat inside the item window', async () => {
     const { db, notify } = await load()
     enable(db)
 
@@ -215,23 +215,117 @@ describe('handlePlaybackStart', () => {
     expect(sendToAll).toHaveBeenCalledTimes(1)
   })
 
-  it('notifies again once the dedupe window has passed', async () => {
+  it('suppresses a repeat without asking Tautulli again', async () => {
+    const { db, notify } = await load()
+    enable(db)
+
+    await notify.handlePlaybackStart(play, { now: 1_000_000 })
+    getMetadata.mockClear()
+    await notify.handlePlaybackStart(play, { now: 1_000_000 + 60_000 })
+
+    expect(getMetadata).not.toHaveBeenCalled()
+  })
+
+  it('still suppresses past the item window, because the show window holds', async () => {
     const { db, notify } = await load()
     enable(db)
 
     await notify.handlePlaybackStart(play, { now: 1_000_000 })
     const later = await notify.handlePlaybackStart(play, { now: 1_000_000 + 31 * 60 * 1000 })
 
+    expect(later.notified).toBe(false)
+    expect(later.reason).toBe('Already notified for Breaking Bad recently')
+    expect(sendToAll).toHaveBeenCalledTimes(1)
+  })
+
+  it('notifies again once the show window has passed', async () => {
+    const { db, notify } = await load()
+    enable(db)
+
+    await notify.handlePlaybackStart(play, { now: 1_000_000 })
+    const later = await notify.handlePlaybackStart(play, {
+      now: 1_000_000 + 6 * 60 * 60 * 1000 + 60_000,
+    })
+
     expect(later.notified).toBe(true)
     expect(sendToAll).toHaveBeenCalledTimes(2)
   })
 
-  it('dedupes per item, not per user', async () => {
+  it('suppresses the next episode of the same show', async () => {
     const { db, notify } = await load()
     enable(db)
-    getMetadata.mockImplementation(async () => movie)
 
     await notify.handlePlaybackStart(play, { now: 1_000_000 })
+    getMetadata.mockImplementation(async () => ({
+      ...episode,
+      rating_key: '12346',
+      media_index: '15',
+      title: 'Granite State',
+    }))
+    const next = await notify.handlePlaybackStart(
+      { ...play, rating_key: '12346' },
+      { now: 1_000_000 + 45 * 60 * 1000 },
+    )
+
+    expect(next.notified).toBe(false)
+    expect(sendToAll).toHaveBeenCalledTimes(1)
+  })
+
+  it('slides the show window while a binge continues', async () => {
+    const { db, notify } = await load()
+    enable(db)
+    const hour = 60 * 60 * 1000
+
+    // Three episodes five hours apart: a fixed six-hour window would lapse before
+    // the third and buzz again, a sliding one never does.
+    await notify.handlePlaybackStart(play, { now: 0 })
+    getMetadata.mockImplementation(async () => ({ ...episode, rating_key: '12346' }))
+    await notify.handlePlaybackStart({ ...play, rating_key: '12346' }, { now: 5 * hour })
+    getMetadata.mockImplementation(async () => ({ ...episode, rating_key: '12347' }))
+    const third = await notify.handlePlaybackStart(
+      { ...play, rating_key: '12347' },
+      { now: 10 * hour },
+    )
+
+    expect(third.notified).toBe(false)
+    expect(sendToAll).toHaveBeenCalledTimes(1)
+  })
+
+  it('still notifies for a different show inside the window', async () => {
+    const { db, notify } = await load()
+    enable(db)
+
+    await notify.handlePlaybackStart(play, { now: 1_000_000 })
+    getMetadata.mockImplementation(async () => ({
+      ...episode,
+      rating_key: '777',
+      grandparent_rating_key: '888',
+      grandparent_title: 'Severance',
+    }))
+    const other = await notify.handlePlaybackStart(
+      { ...play, rating_key: '777' },
+      { now: 1_000_000 + 60_000 },
+    )
+
+    expect(other.notified).toBe(true)
+    expect(sendToAll).toHaveBeenCalledTimes(2)
+  })
+
+  it('tags by show so the OS replaces rather than stacks', async () => {
+    const { db, notify } = await load()
+    enable(db)
+
+    await notify.handlePlaybackStart(play)
+
+    expect(sendToAll.mock.calls[0]![0].tag).toBe('alice:show:999')
+  })
+
+  it('dedupes per subject, not per user', async () => {
+    const { db, notify } = await load()
+    enable(db)
+
+    await notify.handlePlaybackStart(play, { now: 1_000_000 })
+    getMetadata.mockImplementation(async () => movie)
     const other = await notify.handlePlaybackStart(
       { ...play, rating_key: '555' },
       { now: 1_000_000 },

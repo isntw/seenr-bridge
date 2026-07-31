@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import type { ActivitySession, Mapping, PendingWatchEntry, SharedTitle } from '../../shared/types'
+import type {
+  ActivitySession, Mapping, NotifyMute, PendingWatchEntry, SharedTitle,
+} from '../../shared/types'
 import { apiErrorMessage } from '../../shared/errors'
 
 const props = defineProps<{
@@ -7,6 +9,7 @@ const props = defineProps<{
   mappings: Mapping[]
   shares: SharedTitle[]
   pending: PendingWatchEntry[]
+  mutes: NotifyMute[]
   focus?: { rating_key: string; username: string } | null
 }>()
 const emit = defineEmits<{ changed: []; focused: [] }>()
@@ -19,6 +22,7 @@ const busy = ref(false)
 const picked = ref<number[]>([])
 const scope = ref<'once' | 'always'>('once')
 const plexSync = ref(false)
+const notifyOn = ref(true)
 
 const enabledMappings = computed(() => props.mappings.filter((m) => m.enabled))
 
@@ -80,11 +84,18 @@ function plexBound(s: ActivitySession) {
   return !!shareFor(s)?.plex_sync || pendingFor(s).some((p) => p.plex_sync)
 }
 
+// Same key the share uses, so a mute and a share cannot disagree about what
+// "this show" means.
+function mutedFor(s: ActivitySession) {
+  return props.mutes.some((m) => m.subject_key === shareSubject(s).rating_key)
+}
+
 function openDialog(s: ActivitySession) {
   target.value = s
   picked.value = countedIds(s)
   scope.value = 'once'
   plexSync.value = plexBound(s)
+  notifyOn.value = !mutedFor(s)
   open.value = true
 }
 
@@ -133,6 +144,7 @@ const dirty = computed(() => {
   if (before.size !== now.size) return true
   for (const id of now) if (!before.has(id)) return true
   if (plexSync.value !== plexBound(s)) return true
+  if (notifyOn.value === mutedFor(s)) return true
   if (wantsShare(s) && !shareFor(s) && now.size) return true
   return false
 })
@@ -142,6 +154,15 @@ async function save() {
   if (!s) return
   busy.value = true
   try {
+    // Captured before the first await: props refresh under us afterwards.
+    const mutedChanged = notifyOn.value === mutedFor(s)
+    const wasCounted = new Set(countedIds(s))
+    const onlyMute =
+      mutedChanged &&
+      wasCounted.size === picked.value.length &&
+      picked.value.every((id) => wasCounted.has(id)) &&
+      plexSync.value === plexBound(s)
+
     const share = shareFor(s)
     const members = share?.profiles ?? []
     const offered = new Set(enabledMappings.value.map((m) => m.id))
@@ -195,12 +216,33 @@ async function save() {
       })
     }
 
+    if (mutedChanged) {
+      const subject = shareSubject(s)
+      await (notifyOn.value
+        ? $fetch('/api/notify/mutes', {
+            method: 'DELETE',
+            body: { subject_key: subject.rating_key },
+          })
+        : $fetch('/api/notify/mutes', {
+            method: 'POST',
+            body: {
+              subject_key: subject.rating_key,
+              title: subject.title || s.title,
+              media_type: subject.media_type,
+            },
+          }))
+    }
+
     toast.add({
-      title: !picked.value.length
-        ? 'Removed.'
-        : wantsShare(s)
-          ? 'Saved. Future watches fan out to them too.'
-          : `Counted for ${toQueue.length === 1 ? '1 profile' : `${toQueue.length} profiles`} when this finishes.`,
+      title: onlyMute
+        ? notifyOn.value
+          ? `Notifications for ${label(s)} are back on.`
+          : `Muted ${label(s)}.`
+        : !picked.value.length
+          ? 'Removed.'
+          : wantsShare(s)
+            ? 'Saved. Future watches fan out to them too.'
+            : `Counted for ${toQueue.length === 1 ? '1 profile' : `${toQueue.length} profiles`} when this finishes.`,
       color: 'success',
     })
     open.value = false
@@ -322,6 +364,19 @@ async function save() {
           <section>
             <h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">Plex</h3>
             <USwitch v-model="plexSync" label="Mark watched in Plex too" />
+          </section>
+
+          <section>
+            <h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
+              Notifications
+            </h3>
+            <USwitch
+              v-model="notifyOn"
+              :label="isEpisode(target) ? 'Notify when this show starts' : 'Notify when this plays'"
+            />
+            <p v-if="!notifyOn" class="mt-2 text-xs text-dimmed">
+              Silent until you turn this back on, here or in Settings — whoever plays it.
+            </p>
           </section>
 
           <section v-if="isEpisode(target)">

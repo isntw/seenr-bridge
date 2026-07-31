@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type {
-  ActivitySession, Mapping, PendingWatchEntry, ScrobbleEvent, SharedTitle, Stats,
+  ActivitySession, Mapping, NotifyMute, PendingWatchEntry, ScrobbleEvent, SharedTitle, Stats,
 } from '../../shared/types'
 
 const limit = ref(25)
@@ -57,10 +57,17 @@ const { data: pending, refresh: refreshPending } = useAsyncData<PendingWatchEntr
   { default: (): PendingWatchEntry[] => [], lazy: true },
 )
 
+const { data: mutes, refresh: refreshMutes } = useAsyncData<NotifyMute[]>(
+  'mutes',
+  () => $fetch('/api/notify/mutes'),
+  { default: (): NotifyMute[] => [], lazy: true },
+)
+
 function refreshWatchTogether() {
   refreshActivity()
   refreshShares()
   refreshPending()
+  refreshMutes()
 }
 
 const loading = isFirstLoad(statsStatus, eventsStatus)
@@ -108,6 +115,7 @@ const remaining = computed(() =>
       :mappings="mappings ?? []"
       :shares="shares ?? []"
       :pending="pending ?? []"
+      :mutes="mutes ?? []"
       :focus="focus"
       @changed="refreshWatchTogether()"
       @focused="clearFocus()"

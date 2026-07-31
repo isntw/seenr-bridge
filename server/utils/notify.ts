@@ -1,7 +1,7 @@
 import { firstUser, getSettings, isNotifyMuted, parseNotifyUsers } from './db'
 import { libraryGateReason } from './pipeline'
 import { getMetadata } from './tautulli'
-import { posterUrl } from './poster'
+import { posterUrl, POSTER_BOX, WIDE_BOX } from './poster'
 import { sendToAll, type PushPayload, type SendResult } from './push'
 import type { IncomingEvent, TautulliMetadata } from '../../shared/types'
 
@@ -97,8 +97,8 @@ export function notificationFor(
     body: `Started by ${username} · Watch together →`,
     url: `/dashboard?watch=${encodeURIComponent(meta.rating_key)}&user=${encodeURIComponent(username)}`,
     tag: showKey(username, subject),
-    icon: posterUrl(posterArt(meta), now),
-    image: posterUrl(wideArt(meta), now),
+    icon: posterUrl(posterArt(meta), POSTER_BOX, now),
+    image: posterUrl(wideArt(meta), WIDE_BOX, now),
     mute: {
       subject_key: subject,
       title: showOrTitle(meta),

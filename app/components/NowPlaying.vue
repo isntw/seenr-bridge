@@ -11,6 +11,8 @@ const props = defineProps<{
   pending: PendingWatchEntry[]
   mutes: NotifyMute[]
   focus?: { rating_key: string; username: string } | null
+  /** False until shares, pending and mutes have landed — see focusTarget(). */
+  ready?: boolean
 }>()
 const emit = defineEmits<{ changed: []; focused: [] }>()
 
@@ -104,14 +106,9 @@ function toggle(id: number, on: boolean) {
 }
 
 watch(
-  [() => props.focus, () => props.sessions],
+  [() => props.focus, () => props.sessions, () => props.ready],
   () => {
-    const f = props.focus
-    if (!f || open.value) return
-    const match = props.sessions.find(
-      (s) =>
-        s.rating_key === f.rating_key && s.username.toLowerCase() === f.username.toLowerCase(),
-    )
+    const match = focusTarget(props.focus, props.sessions, props.ready ?? false, open.value)
     if (!match) return
     openDialog(match)
     emit('focused')

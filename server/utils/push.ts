@@ -16,6 +16,8 @@ export interface PushPayload {
   body: string
   url: string
   tag: string
+  /** Present when the notification offers a mute action; absent on the test push. */
+  mute?: { subject_key: string; title: string; media_type: string }
 }
 
 export function ensureVapidKeys(): { publicKey: string; privateKey: string } {

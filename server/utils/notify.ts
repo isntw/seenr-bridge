@@ -121,6 +121,11 @@ export async function handlePlaybackStart(
     body: `Started by ${input.username} · Watch together →`,
     url: `/dashboard?watch=${encodeURIComponent(input.rating_key)}&user=${encodeURIComponent(input.username)}`,
     tag: show,
+    mute: {
+      subject_key: subject,
+      title: showOrTitle(meta),
+      media_type: meta.media_type === 'episode' ? 'show' : meta.media_type,
+    },
   })
 
   return { notified: send.sent > 0, send }

@@ -44,6 +44,8 @@ interface SentPayload {
   body: string
   url: string
   tag: string
+  icon?: string
+  image?: string
   mute?: { subject_key: string; title: string; media_type: string }
 }
 const sendToAll = vi.fn(async (_payload: SentPayload) => ({ sent: 1, failed: 0, pruned: 0 }))
@@ -376,6 +378,53 @@ describe('handlePlaybackStart', () => {
     await notify.handlePlaybackStart(play)
 
     expect(sendToAll.mock.calls[0]![0].tag).toBe('alice:show:999')
+  })
+
+  it('sends the show poster as the icon and the episode still as the image', async () => {
+    const { db, notify } = await load()
+    enable(db)
+
+    await notify.handlePlaybackStart(play)
+
+    const { icon, image } = sendToAll.mock.calls[0]![0]
+    expect(icon).toContain('/api/push/poster?')
+    expect(icon).toContain(encodeURIComponent('/library/metadata/999/thumb/1'))
+    expect(image).toContain(encodeURIComponent('/library/metadata/12345/thumb/1'))
+  })
+
+  it('signs the poster URL so an unauthenticated fetch can serve it', async () => {
+    const { db, notify } = await load()
+    const poster = await import('../server/utils/poster')
+    enable(db)
+
+    await notify.handlePlaybackStart(play, { now: 1_000_000 })
+
+    const q = new URLSearchParams(sendToAll.mock.calls[0]![0].icon!.split('?')[1])
+    expect(
+      poster.posterSignatureValid(q.get('path')!, q.get('exp')!, q.get('sig')!, 1_000_000),
+    ).toBe(true)
+  })
+
+  it('sends a movie its poster and no wide art, which would be cropped', async () => {
+    const { db, notify } = await load()
+    enable(db)
+    getMetadata.mockImplementation(async () => movie)
+
+    await notify.handlePlaybackStart({ ...play, rating_key: '555' })
+
+    const { icon, image } = sendToAll.mock.calls[0]![0]
+    expect(icon).toContain(encodeURIComponent('/library/metadata/12345/thumb/1'))
+    expect(image).toBe('')
+  })
+
+  it('sends no icon for an item with no art, falling back to the app icon', async () => {
+    const { db, notify } = await load()
+    enable(db)
+    getMetadata.mockImplementation(async () => ({ ...episode, thumb: '', grandparent_thumb: '' }))
+
+    await notify.handlePlaybackStart(play)
+
+    expect(sendToAll.mock.calls[0]![0].icon).toBe('')
   })
 
   it('carries what the mute action needs', async () => {

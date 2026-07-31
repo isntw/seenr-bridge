@@ -71,6 +71,11 @@ export const PUBLIC_API_PATHS = new Set([
   // /poll only issues a session for a Plex account the operator has already linked.
   '/api/auth/plex/start',
   '/api/auth/plex/poll',
+  // Notification art. The browser fetches a notification's icon/image from its own
+  // network stack — no page, often no running app — so a session cookie cannot be
+  // counted on. Exact path, and the handler serves nothing without a valid HMAC
+  // this server issued, which is what stops it being /api/image without the gate.
+  '/api/push/poster',
 ])
 
 // @nuxt/icon serves the bundled icon collections from /api/_nuxt_icon/<name>.json

@@ -12,7 +12,10 @@ self.addEventListener('push', (event) => {
   event.waitUntil(
     self.registration.showNotification(p.title || 'Seenr Bridge', {
       body: p.body || '',
-      icon: '/icon-192.png',
+      // The poster when there is one, the app icon otherwise. Safari ignores both
+      // this and image, and uses the home-screen icon regardless.
+      icon: p.icon || '/icon-192.png',
+      image: p.image || undefined,
       badge: '/badge-96.png',
       tag: p.tag || 'seenr-bridge',
       data: { url: p.url || '/dashboard', mute: p.mute || null },

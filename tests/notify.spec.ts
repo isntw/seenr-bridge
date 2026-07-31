@@ -44,6 +44,7 @@ interface SentPayload {
   body: string
   url: string
   tag: string
+  mute?: { subject_key: string; title: string; media_type: string }
 }
 const sendToAll = vi.fn(async (_payload: SentPayload) => ({ sent: 1, failed: 0, pruned: 0 }))
 vi.mock('../server/utils/push', () => ({
@@ -375,6 +376,33 @@ describe('handlePlaybackStart', () => {
     await notify.handlePlaybackStart(play)
 
     expect(sendToAll.mock.calls[0]![0].tag).toBe('alice:show:999')
+  })
+
+  it('carries what the mute action needs', async () => {
+    const { db, notify } = await load()
+    enable(db)
+
+    await notify.handlePlaybackStart(play)
+
+    expect(sendToAll.mock.calls[0]![0].mute).toEqual({
+      subject_key: '999',
+      title: 'Breaking Bad',
+      media_type: 'show',
+    })
+  })
+
+  it('offers a movie its own key and type', async () => {
+    const { db, notify } = await load()
+    enable(db)
+    getMetadata.mockImplementation(async () => movie)
+
+    await notify.handlePlaybackStart({ ...play, rating_key: '555' })
+
+    expect(sendToAll.mock.calls[0]![0].mute).toEqual({
+      subject_key: '555',
+      title: 'The Matrix',
+      media_type: 'movie',
+    })
   })
 
   it('dedupes per subject, not per user', async () => {

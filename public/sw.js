@@ -1,7 +1,7 @@
 // Kept in step with shared/version.ts by a test, because this is the only way to
 // tell which worker a device is actually running: the version in the UI comes from
 // the server, so a stale worker and a current server look identical.
-const SW_VERSION = '2.6.6'
+const SW_VERSION = '2.6.7'
 
 self.addEventListener('install', () => self.skipWaiting())
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()))
@@ -19,43 +19,79 @@ self.addEventListener('push', (event) => {
     p = {}
   }
 
-  event.waitUntil(
-    self.registration.showNotification(p.title || 'Seenr Bridge', {
-      body: p.body || '',
-      // The poster when there is one, the app icon otherwise. Safari ignores both
-      // this and image, and uses the home-screen icon regardless.
-      icon: p.icon || '/icon-192.png',
-      image: p.image || undefined,
-      badge: '/badge-96.png',
-      tag: p.tag || 'seenr-bridge',
-      data: { url: p.url || '/dashboard', mute: p.mute || null },
-      // iOS reports maxActions: 0 and drops these silently, so the dialog's own
-      // switch stays the only route there. Android and desktop get the button.
-      actions: p.mute ? [{ action: 'mute', title: 'Mute this show' }] : [],
-    }),
-  )
+  // No `icon`: the badge already carries the app's identity, and setting both put a
+  // second copy of the same mark in the notification. The artwork goes in `image`.
+  const options = {
+    body: p.body || '',
+    image: p.image || undefined,
+    badge: '/badge-96.png',
+    tag: p.tag || 'seenr-bridge',
+    data: { url: p.url || '/dashboard', mute: p.mute || null, join: p.join || null },
+    actions: [],
+  }
+
+  // Two is Chrome's limit, and two is what there is. "Count me in" only appears for
+  // someone else's playback, so the pair never overflows.
+  if (p.join) options.actions.push({ action: 'join', title: 'Count me in' })
+  if (p.mute) options.actions.push({ action: 'mute', title: 'Mute this show' })
+
+  event.waitUntil(self.registration.showNotification(p.title || 'Seenr Bridge', options))
 })
 
-async function mute(subject) {
+// A silent failure would look exactly like the action having worked, and an expired
+// session 401s here — so say so. Unlike a notification image, this fetch does carry
+// the session cookie.
+async function act(path, body, failure) {
   try {
-    const res = await fetch('/api/notify/mutes', {
+    const res = await fetch(path, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(subject),
+      body: JSON.stringify(body),
     })
     if (!res.ok) throw new Error(String(res.status))
+    return true
   } catch {
-    // An expired session 401s here, and a silent failure would look like a mute
-    // that took. Unlike a notification image, this fetch does carry the cookie.
-    await self.registration.showNotification('Could not mute that show', {
-      body: 'Open Seenr Bridge and mute it from the Watch together dialog.',
-      icon: '/icon-192.png',
+    await self.registration.showNotification(failure.title, {
+      body: failure.body,
       badge: '/badge-96.png',
-      tag: 'seenr-bridge-mute-failed',
-      data: { url: '/settings' },
+      tag: failure.tag,
+      data: { url: failure.url },
     })
+    return false
   }
+}
+
+async function mute(subject) {
+  await act('/api/notify/mutes', subject, {
+    title: 'Could not mute that show',
+    body: 'Open Seenr Bridge and mute it from the Watch together dialog.',
+    tag: 'seenr-bridge-mute-failed',
+    url: '/settings',
+  })
+}
+
+async function join(target) {
+  const ok = await act(
+    '/api/notify/join',
+    { rating_key: target.rating_key },
+    {
+      title: 'Could not count that for you',
+      body: 'Open Seenr Bridge and add yourself from the Watch together dialog.',
+      tag: 'seenr-bridge-join-failed',
+      url: '/dashboard',
+    },
+  )
+  if (!ok) return
+
+  // Confirmation rather than silence: this wrote a share that keeps counting future
+  // episodes, which is worth telling someone about and worth linking to.
+  await self.registration.showNotification(`Counting ${target.title} for you`, {
+    body: 'Also marking it watched in your own Plex.',
+    badge: '/badge-96.png',
+    tag: 'seenr-bridge-joined',
+    data: { url: '/shared' },
+  })
 }
 
 self.addEventListener('notificationclick', (event) => {
@@ -64,6 +100,11 @@ self.addEventListener('notificationclick', (event) => {
 
   if (event.action === 'mute' && data.mute) {
     event.waitUntil(mute(data.mute))
+    return
+  }
+
+  if (event.action === 'join' && data.join) {
+    event.waitUntil(join(data.join))
     return
   }
 

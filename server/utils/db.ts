@@ -645,6 +645,15 @@ export function listSharedTitles(): SharedTitle[] {
   return rows.map((r) => sharedTitleToWire(r, byKey.get(r.rating_key) ?? []))
 }
 
+/** The profiles already co-watching a title, so a write can add without replacing. */
+export function getSharedTitleProfiles(rating_key: string): number[] {
+  return (
+    useDb()
+      .prepare('SELECT mapping_id FROM shared_title_profiles WHERE rating_key = ?')
+      .all(rating_key) as { mapping_id: number }[]
+  ).map((r) => r.mapping_id)
+}
+
 // Set (or clear) the profiles co-watching a title. Empty list removes the share.
 export function setSharedTitle(
   t: {

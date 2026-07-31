@@ -21,6 +21,7 @@ const episode: TautulliMetadata = {
   guids: ['tmdb://62161'],
   thumb: '/library/metadata/12345/thumb/1',
   grandparent_thumb: '/library/metadata/999/thumb/1',
+  art: '/library/metadata/999/art/1',
 }
 
 const movie: TautulliMetadata = {
@@ -32,6 +33,7 @@ const movie: TautulliMetadata = {
   title: 'The Matrix',
   year: 1999,
   grandparent_title: '',
+  art: '/library/metadata/555/art/1',
 }
 
 const getMetadata = vi.fn(async () => episode)
@@ -380,64 +382,87 @@ describe('handlePlaybackStart', () => {
     expect(sendToAll.mock.calls[0]![0].tag).toBe('alice:show:999')
   })
 
-  it('sends the show poster as the icon and the episode still as the image', async () => {
+  it('sends the episode still as the wide image', async () => {
     const { db, notify } = await load()
     enable(db)
 
     await notify.handlePlaybackStart(play)
 
-    const { icon, image } = sendToAll.mock.calls[0]![0]
-    expect(icon).toContain('/api/push/poster?')
-    expect(icon).toContain(encodeURIComponent('/library/metadata/999/thumb/1'))
-    expect(image).toContain(encodeURIComponent('/library/metadata/12345/thumb/1'))
+    const payload = sendToAll.mock.calls[0]![0]
+    expect(payload.image).toContain('/api/push/poster?')
+    expect(payload.image).toContain(encodeURIComponent('/library/metadata/12345/thumb/1'))
   })
 
-  it('signs the poster URL so an unauthenticated fetch can serve it', async () => {
+  // The icon slot is square and the platform stretches whatever it holds, so a
+  // poster there is squashed however carefully it is fetched. 2.6.3 and 2.6.5 both
+  // learned this the hard way; the app icon stays and the art goes in the wide row.
+  it('sends no icon at all, leaving the app icon in that slot', async () => {
+    const { db, notify } = await load()
+    enable(db)
+
+    await notify.handlePlaybackStart(play)
+
+    expect(sendToAll.mock.calls[0]![0]).not.toHaveProperty('icon')
+  })
+
+  it('signs the art URL so an unauthenticated fetch can serve it', async () => {
     const { db, notify } = await load()
     const poster = await import('../server/utils/poster')
     enable(db)
 
     await notify.handlePlaybackStart(play, { now: 1_000_000 })
 
-    const q = new URLSearchParams(sendToAll.mock.calls[0]![0].icon!.split('?')[1])
+    const q = new URLSearchParams(sendToAll.mock.calls[0]![0].image!.split('?')[1])
     expect(
       poster.verifiedPosterBox(
         q.get('path')!, q.get('w')!, q.get('h')!, q.get('exp')!, q.get('sig')!, 1_000_000,
       ),
-    ).toEqual({ w: 384, h: 576 })
+    ).toEqual({ w: 1280, h: 720 })
   })
 
-  it('asks for the poster at 2:3 and the still at 16:9, never a square', async () => {
+  it('asks for 16:9, the shape the wide row wants', async () => {
     const { db, notify } = await load()
     enable(db)
 
     await notify.handlePlaybackStart(play)
 
-    const { icon, image } = sendToAll.mock.calls[0]![0]
-    expect(icon).toContain('w=384&h=576')
-    expect(image).toContain('w=1280&h=720')
+    expect(sendToAll.mock.calls[0]![0].image).toContain('w=1280&h=720')
   })
 
-  it('sends a movie its poster and no wide art, which would be cropped', async () => {
+  // A movie's thumb is its 2:3 poster, which the wide row would crop to a strip;
+  // art is Plex's backdrop and the only 16:9 image a film has.
+  it('uses the backdrop for a movie, not its poster', async () => {
     const { db, notify } = await load()
     enable(db)
     getMetadata.mockImplementation(async () => movie)
 
     await notify.handlePlaybackStart({ ...play, rating_key: '555' })
 
-    const { icon, image } = sendToAll.mock.calls[0]![0]
-    expect(icon).toContain(encodeURIComponent('/library/metadata/12345/thumb/1'))
-    expect(image).toBe('')
+    const image = sendToAll.mock.calls[0]![0].image!
+    expect(image).toContain(encodeURIComponent('/library/metadata/555/art/1'))
+    expect(image).not.toContain(encodeURIComponent('/library/metadata/12345/thumb/1'))
   })
 
-  it('sends no icon for an item with no art, falling back to the app icon', async () => {
+  it('falls back to the backdrop when an episode has no still', async () => {
     const { db, notify } = await load()
     enable(db)
-    getMetadata.mockImplementation(async () => ({ ...episode, thumb: '', grandparent_thumb: '' }))
+    getMetadata.mockImplementation(async () => ({ ...episode, thumb: '' }))
 
     await notify.handlePlaybackStart(play)
 
-    expect(sendToAll.mock.calls[0]![0].icon).toBe('')
+    expect(sendToAll.mock.calls[0]![0].image).toContain(
+      encodeURIComponent('/library/metadata/999/art/1'),
+    )
+  })
+
+  it('sends no image for an item with no art at all', async () => {
+    const { db, notify } = await load()
+    enable(db)
+    getMetadata.mockImplementation(async () => ({ ...episode, thumb: '', art: '' }))
+
+    await notify.handlePlaybackStart(play)
+
+    expect(sendToAll.mock.calls[0]![0].image).toBe('')
   })
 
   it('carries what the mute action needs', async () => {

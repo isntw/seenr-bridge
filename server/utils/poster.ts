@@ -12,12 +12,11 @@ import { getPosterSecret } from './db'
 const TTL_MS = 7 * 24 * 60 * 60 * 1000
 
 /**
- * Tautulli resizes to exactly the box it is asked for, so the box has to match the
- * art's own shape or the image comes back stretched. A poster is 2:3 (which is why
- * /api/image asks for 92x138) and an episode still is 16:9. Asking for a square —
- * as this did in 2.6.3 — squashed every poster.
+ * Plex's transcoder scales to fit inside the box it is given, so the box should
+ * match the art's own shape — 16:9 for the wide row a notification shows art in.
+ * There is deliberately no square box: nothing goes in the notification's `icon`
+ * slot, because the platform stretches whatever it finds there. See wideArt().
  */
-export const POSTER_BOX = { w: 384, h: 576 } as const
 export const WIDE_BOX = { w: 1280, h: 720 } as const
 
 export interface PosterBox {
@@ -35,7 +34,7 @@ function sign(imgPath: string, box: PosterBox, exp: number): string {
 /** A relative, signed URL for a Plex art path, or '' when there is no art. */
 export function posterUrl(
   imgPath: string | undefined,
-  box: PosterBox = POSTER_BOX,
+  box: PosterBox = WIDE_BOX,
   now = Date.now(),
 ): string {
   if (!imgPath) return ''

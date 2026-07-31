@@ -1,7 +1,7 @@
 import { firstUser, getSettings, isNotifyMuted, parseNotifyUsers } from './db'
 import { libraryGateReason } from './pipeline'
 import { getMetadata } from './tautulli'
-import { posterUrl, POSTER_BOX, WIDE_BOX } from './poster'
+import { posterUrl, WIDE_BOX } from './poster'
 import { sendToAll, type PushPayload, type SendResult } from './push'
 import type { IncomingEvent, TautulliMetadata } from '../../shared/types'
 
@@ -46,16 +46,21 @@ function showOrTitle(m: TautulliMetadata): string {
   return m.media_type === 'episode' && m.grandparent_title ? m.grandparent_title : m.title
 }
 
-// The show's poster for an episode, the film's own otherwise — the square-ish art
-// that replaces the app icon.
-function posterArt(m: TautulliMetadata): string | undefined {
-  return (m.media_type === 'episode' ? m.grandparent_thumb || m.thumb : m.thumb) || undefined
-}
-
-// Wide art for the big-picture row, which crops to roughly 2:1 — an episode still
-// suits that, a 2:3 poster would be decapitated, so movies send nothing.
+/**
+ * Art for the notification's wide image row, which is where Android shows a large
+ * picture and wants roughly 16:9.
+ *
+ * Nothing goes in the `icon` slot: that one is square, and the platform scales
+ * whatever it is given to fill it, so a 2:3 poster arrives squashed however
+ * carefully it is fetched — Tautulli cannot crop (its get_image passes only
+ * width/height to Plex's transcoder, which scales to fit). The app icon stays
+ * there and the artwork goes here, each slot getting the shape it wants.
+ *
+ * An episode's `thumb` is its still and already 16:9; a movie's `thumb` is the 2:3
+ * poster, so a film uses `art` — Plex's backdrop — instead.
+ */
 function wideArt(m: TautulliMetadata): string | undefined {
-  return (m.media_type === 'episode' ? m.thumb : '') || undefined
+  return (m.media_type === 'episode' ? m.thumb || m.art : m.art) || undefined
 }
 
 function detail(m: TautulliMetadata): string {
@@ -97,7 +102,6 @@ export function notificationFor(
     body: `Started by ${username} · Watch together →`,
     url: `/dashboard?watch=${encodeURIComponent(meta.rating_key)}&user=${encodeURIComponent(username)}`,
     tag: showKey(username, subject),
-    icon: posterUrl(posterArt(meta), POSTER_BOX, now),
     image: posterUrl(wideArt(meta), WIDE_BOX, now),
     mute: {
       subject_key: subject,

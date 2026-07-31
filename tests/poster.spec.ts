@@ -38,22 +38,20 @@ function parse(url: string) {
 describe('posterUrl', () => {
   it('signs a path and box it can verify back', async () => {
     const { poster } = await load()
-    const { path: p, w, h, exp, sig } = parse(poster.posterUrl(ART, poster.POSTER_BOX, 1_000_000))
+    const { path: p, w, h, exp, sig } = parse(poster.posterUrl(ART, poster.WIDE_BOX, 1_000_000))
 
     expect(p).toBe(ART)
-    expect(poster.verifiedPosterBox(p, w, h, exp, sig, 1_000_000)).toEqual({ w: 384, h: 576 })
+    expect(poster.verifiedPosterBox(p, w, h, exp, sig, 1_000_000)).toEqual({ w: 1280, h: 720 })
   })
 
-  // Tautulli resizes to exactly the box asked for, so a square box stretches a 2:3
-  // poster — which is what 2.6.3 shipped.
-  it('asks for a 2:3 box for a poster and 16:9 for wide art', async () => {
+  // The only box there is, because the only slot art goes in is the wide row.
+  it('asks for 16:9', async () => {
     const { poster } = await load()
 
-    expect(poster.POSTER_BOX.w / poster.POSTER_BOX.h).toBeCloseTo(2 / 3, 3)
     expect(poster.WIDE_BOX.w / poster.WIDE_BOX.h).toBeCloseTo(16 / 9, 3)
   })
 
-  it('is empty for an item with no art, so no icon is sent', async () => {
+  it('is empty for an item with no art, so no image is sent', async () => {
     const { poster } = await load()
     expect(poster.posterUrl(undefined)).toBe('')
     expect(poster.posterUrl('')).toBe('')
@@ -61,7 +59,7 @@ describe('posterUrl', () => {
 
   it('rejects a tampered path — the whole point of signing', async () => {
     const { poster } = await load()
-    const { w, h, exp, sig } = parse(poster.posterUrl(ART, poster.POSTER_BOX, 1_000_000))
+    const { w, h, exp, sig } = parse(poster.posterUrl(ART, poster.WIDE_BOX, 1_000_000))
 
     expect(
       poster.verifiedPosterBox('/library/metadata/1/thumb/1', w, h, exp, sig, 1_000_000),
@@ -72,7 +70,7 @@ describe('posterUrl', () => {
   // image by editing w and h.
   it('rejects a tampered box', async () => {
     const { poster } = await load()
-    const { path: p, w, h, exp, sig } = parse(poster.posterUrl(ART, poster.POSTER_BOX, 1_000_000))
+    const { path: p, w, h, exp, sig } = parse(poster.posterUrl(ART, poster.WIDE_BOX, 1_000_000))
 
     expect(poster.verifiedPosterBox(p, 4096, h, exp, sig, 1_000_000)).toBeNull()
     expect(poster.verifiedPosterBox(p, w, 4096, exp, sig, 1_000_000)).toBeNull()
@@ -81,14 +79,14 @@ describe('posterUrl', () => {
 
   it('rejects a tampered expiry', async () => {
     const { poster } = await load()
-    const { path: p, w, h, exp, sig } = parse(poster.posterUrl(ART, poster.POSTER_BOX, 1_000_000))
+    const { path: p, w, h, exp, sig } = parse(poster.posterUrl(ART, poster.WIDE_BOX, 1_000_000))
 
     expect(poster.verifiedPosterBox(p, w, h, Number(exp) + 1000, sig, 1_000_000)).toBeNull()
   })
 
   it('rejects a forged signature of any length', async () => {
     const { poster } = await load()
-    const { path: p, w, h, exp } = parse(poster.posterUrl(ART, poster.POSTER_BOX, 1_000_000))
+    const { path: p, w, h, exp } = parse(poster.posterUrl(ART, poster.WIDE_BOX, 1_000_000))
 
     expect(poster.verifiedPosterBox(p, w, h, exp, 'nope', 1_000_000)).toBeNull()
     expect(poster.verifiedPosterBox(p, w, h, exp, 'a'.repeat(64), 1_000_000)).toBeNull()
@@ -97,7 +95,7 @@ describe('posterUrl', () => {
 
   it('expires', async () => {
     const { poster } = await load()
-    const { path: p, w, h, exp, sig } = parse(poster.posterUrl(ART, poster.POSTER_BOX, 1_000_000))
+    const { path: p, w, h, exp, sig } = parse(poster.posterUrl(ART, poster.WIDE_BOX, 1_000_000))
     const week = 7 * 24 * 60 * 60 * 1000
 
     expect(poster.verifiedPosterBox(p, w, h, exp, sig, 1_000_000 + week - 1)).not.toBeNull()
@@ -106,7 +104,7 @@ describe('posterUrl', () => {
 
   it('reuses one generated secret, so a URL survives a restart', async () => {
     const { db, poster } = await load()
-    const first = parse(poster.posterUrl(ART, poster.POSTER_BOX, 1_000_000))
+    const first = parse(poster.posterUrl(ART, poster.WIDE_BOX, 1_000_000))
     const secret = db.getPosterSecret()
 
     db.closeDb()

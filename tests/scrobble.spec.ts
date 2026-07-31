@@ -18,6 +18,7 @@ const episode: TautulliMetadata = {
   guids: ['imdb://tt2301455', 'tmdb://62161', 'tvdb://4589350'],
   thumb: '/library/metadata/12345/thumb/1700000000',
   grandparent_thumb: '/library/metadata/999/thumb/1700000000',
+  art: '/library/metadata/999/art/1700000000',
 }
 
 const movie: TautulliMetadata = {

@@ -72,8 +72,8 @@ describe('PUBLIC_API_PATHS', () => {
   // Deliberately exhaustive, and deliberately annoying to change: every entry here is
   // reachable with no session, so widening the set must be a conscious edit to this
   // test rather than something that slips in beside a feature.
-  it('contains exactly the nine expected bypass paths', () => {
-    expect(PUBLIC_API_PATHS.size).toBe(9)
+  it('contains exactly the ten expected bypass paths', () => {
+    expect(PUBLIC_API_PATHS.size).toBe(10)
     expect(new Set(PUBLIC_API_PATHS)).toEqual(
       new Set([
         '/api/health',
@@ -88,6 +88,10 @@ describe('PUBLIC_API_PATHS', () => {
         // which is what keeps this an exact-match set rather than a prefix match.
         '/api/auth/plex/start',
         '/api/auth/plex/poll',
+        // Notification art, fetched by the browser with no page and often no running
+        // app, so no cookie. Unauthenticated but not open: the handler serves nothing
+        // without an HMAC this server issued — see server/utils/poster.ts.
+        '/api/push/poster',
       ]),
     )
   })
@@ -98,6 +102,9 @@ describe('PUBLIC_API_PATHS', () => {
     expect(requiresAuth('/api/auth/plex/start/../../settings')).toBe(true)
     expect(requiresAuth('/api/auth/plex/poll/%2e%2e/settings')).toBe(true)
     expect(requiresAuth('/api/auth/plex/startx')).toBe(true)
+    expect(requiresAuth('/api/push/poster/%2e%2e/subscriptions')).toBe(true)
+    expect(requiresAuth('/api/push/posterx')).toBe(true)
+    expect(requiresAuth('/api/push/test')).toBe(true)
   })
 })
 

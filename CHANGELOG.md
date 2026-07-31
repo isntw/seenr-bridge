@@ -2,6 +2,25 @@
 
 Notable changes per release. Versions follow [semantic versioning](https://semver.org).
 
+## 2.6.3
+
+### Added
+
+- **The poster is now the notification's icon.** A play notification carries the
+  show's poster (the film's own for a movie) in place of the app icon, and for an
+  episode the still as the wide image too. The art is served by a new endpoint that
+  needs no session — a notification's images are fetched by the browser with no page
+  open — but each URL is signed and expiring, so it is not an open image proxy.
+
+### Fixed
+
+- **"Send test notification" now sends a real one.** It used to send a bare title
+  and body: no poster, no Mute button, nothing a real notification has. That is
+  indistinguishable from a broken build, which is exactly how it was read. The test
+  now rebuilds the notification for the last thing you watched, through the same
+  code the webhook uses, so what arrives is what a real one looks like. It falls
+  back to the plain message only when there is no history to build from.
+
 ## 2.6.2
 
 ### Added

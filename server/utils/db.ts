@@ -222,6 +222,11 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
   // off the wire so it is never shipped to a browser.
   if (!settingsCols.includes('plex_client_id'))
     db.exec("ALTER TABLE settings ADD COLUMN plex_client_id TEXT NOT NULL DEFAULT ''")
+  // Signs the poster URLs notifications carry. Infrastructure state like
+  // plex_client_id above, off SettingsRow and off the wire: it is what stops
+  // /api/push/poster being an open image proxy despite being unauthenticated.
+  if (!settingsCols.includes('poster_secret'))
+    db.exec("ALTER TABLE settings ADD COLUMN poster_secret TEXT NOT NULL DEFAULT ''")
 
   if (!mappingCols.includes('plex_token'))
     db.exec("ALTER TABLE mappings ADD COLUMN plex_token TEXT NOT NULL DEFAULT ''")
@@ -454,6 +459,19 @@ export function getPlexClientId(): string {
   const id = crypto.randomUUID()
   db.prepare('UPDATE settings SET plex_client_id = ? WHERE id = 1').run(id)
   return id
+}
+
+/** The key that signs notification poster URLs, generated on first use. */
+export function getPosterSecret(): string {
+  const db = useDb()
+  const row = db.prepare('SELECT poster_secret FROM settings WHERE id = 1').get() as {
+    poster_secret: string
+  }
+  if (row.poster_secret) return row.poster_secret
+
+  const secret = crypto.randomBytes(32).toString('hex')
+  db.prepare('UPDATE settings SET poster_secret = ? WHERE id = 1').run(secret)
+  return secret
 }
 
 export function getVapidKeys(): { publicKey: string; privateKey: string } {

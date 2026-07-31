@@ -16,6 +16,10 @@ export interface PushPayload {
   body: string
   url: string
   tag: string
+  /** Signed poster URL replacing the app icon; '' when the item has no art. */
+  icon?: string
+  /** Signed wide art for Android's big-picture row. Ignored by Safari. */
+  image?: string
   /** Present when the notification offers a mute action; absent on the test push. */
   mute?: { subject_key: string; title: string; media_type: string }
 }

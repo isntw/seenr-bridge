@@ -1,7 +1,8 @@
 import { firstUser, getSettings, isNotifyMuted, parseNotifyUsers } from './db'
 import { libraryGateReason } from './pipeline'
 import { getMetadata } from './tautulli'
-import { sendToAll, type SendResult } from './push'
+import { posterUrl } from './poster'
+import { sendToAll, type PushPayload, type SendResult } from './push'
 import type { IncomingEvent, TautulliMetadata } from '../../shared/types'
 
 const ITEM_WINDOW_MS = 30 * 60 * 1000
@@ -45,6 +46,18 @@ function showOrTitle(m: TautulliMetadata): string {
   return m.media_type === 'episode' && m.grandparent_title ? m.grandparent_title : m.title
 }
 
+// The show's poster for an episode, the film's own otherwise — the square-ish art
+// that replaces the app icon.
+function posterArt(m: TautulliMetadata): string | undefined {
+  return (m.media_type === 'episode' ? m.grandparent_thumb || m.thumb : m.thumb) || undefined
+}
+
+// Wide art for the big-picture row, which crops to roughly 2:1 — an episode still
+// suits that, a 2:3 poster would be decapitated, so movies send nothing.
+function wideArt(m: TautulliMetadata): string | undefined {
+  return (m.media_type === 'episode' ? m.thumb : '') || undefined
+}
+
 function detail(m: TautulliMetadata): string {
   if (m.media_type === 'episode') {
     const s = m.parent_media_index || '?'
@@ -65,6 +78,33 @@ export function notifiesFor(username: string, storedUsers: string): boolean {
   const wanted = username.toLowerCase()
   if (ownerNames().includes(wanted)) return true
   return parseNotifyUsers(storedUsers).some((u) => u.toLowerCase() === wanted)
+}
+
+/**
+ * The whole notification, from metadata. Exported because /api/push/test sends a
+ * real one for the last thing watched — a test that skipped this would prove only
+ * that delivery works, and say nothing about the poster or the mute button.
+ */
+export function notificationFor(
+  meta: TautulliMetadata,
+  username: string,
+  now = Date.now(),
+): PushPayload {
+  const subject = subjectKey(meta)
+
+  return {
+    title: [showOrTitle(meta), detail(meta)].filter(Boolean).join(' — '),
+    body: `Started by ${username} · Watch together →`,
+    url: `/dashboard?watch=${encodeURIComponent(meta.rating_key)}&user=${encodeURIComponent(username)}`,
+    tag: showKey(username, subject),
+    icon: posterUrl(posterArt(meta), now),
+    image: posterUrl(wideArt(meta), now),
+    mute: {
+      subject_key: subject,
+      title: showOrTitle(meta),
+      media_type: meta.media_type === 'episode' ? 'show' : meta.media_type,
+    },
+  }
 }
 
 export interface NotifyResult {
@@ -116,17 +156,7 @@ export async function handlePlaybackStart(
 
   stamp(now, show, item)
 
-  const send = await sendToAll({
-    title: [showOrTitle(meta), detail(meta)].filter(Boolean).join(' — '),
-    body: `Started by ${input.username} · Watch together →`,
-    url: `/dashboard?watch=${encodeURIComponent(input.rating_key)}&user=${encodeURIComponent(input.username)}`,
-    tag: show,
-    mute: {
-      subject_key: subject,
-      title: showOrTitle(meta),
-      media_type: meta.media_type === 'episode' ? 'show' : meta.media_type,
-    },
-  })
+  const send = await sendToAll(notificationFor(meta, input.username, now))
 
   return { notified: send.sent > 0, send }
 }

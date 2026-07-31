@@ -311,6 +311,63 @@ describe('handlePlaybackStart', () => {
     expect(sendToAll).toHaveBeenCalledTimes(2)
   })
 
+  it('skips a muted show and says so', async () => {
+    const { db, notify } = await load()
+    enable(db)
+    db.addNotifyMute('999', 'Breaking Bad', 'show')
+
+    const r = await notify.handlePlaybackStart(play)
+
+    expect(r.notified).toBe(false)
+    expect(r.reason).toBe('Muted: Breaking Bad')
+    expect(sendToAll).not.toHaveBeenCalled()
+  })
+
+  it('mutes a movie by its own key', async () => {
+    const { db, notify } = await load()
+    enable(db)
+    getMetadata.mockImplementation(async () => movie)
+    db.addNotifyMute('555', 'The Matrix', 'movie')
+
+    const r = await notify.handlePlaybackStart({ ...play, rating_key: '555' })
+
+    expect(r.notified).toBe(false)
+    expect(r.reason).toBe('Muted: The Matrix')
+  })
+
+  it('reports the mute, not the library, when both would skip', async () => {
+    const { db, notify } = await load()
+    enable(db, ['alice'], { libraries: JSON.stringify(['1']) })
+    db.addNotifyMute('999', 'Breaking Bad', 'show')
+
+    const r = await notify.handlePlaybackStart(play)
+
+    expect(r.reason).toBe('Muted: Breaking Bad')
+  })
+
+  it('notifies again once a show is unmuted', async () => {
+    const { db, notify } = await load()
+    enable(db)
+    db.addNotifyMute('999', 'Breaking Bad', 'show')
+
+    await notify.handlePlaybackStart(play, { now: 1_000_000 })
+    db.deleteNotifyMute('999')
+    const after = await notify.handlePlaybackStart(play, { now: 1_000_000 + 60_000 })
+
+    expect(after.notified).toBe(true)
+    expect(sendToAll).toHaveBeenCalledTimes(1)
+  })
+
+  it('writes no events row for a muted show', async () => {
+    const { db, notify } = await load()
+    enable(db)
+    db.addNotifyMute('999', 'Breaking Bad', 'show')
+
+    await notify.handlePlaybackStart(play)
+
+    expect(db.listEvents(50)).toHaveLength(0)
+  })
+
   it('tags by show so the OS replaces rather than stacks', async () => {
     const { db, notify } = await load()
     enable(db)

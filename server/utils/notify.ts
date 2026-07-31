@@ -1,4 +1,4 @@
-import { firstUser, getSettings, parseNotifyUsers } from './db'
+import { firstUser, getSettings, isNotifyMuted, parseNotifyUsers } from './db'
 import { libraryGateReason } from './pipeline'
 import { getMetadata } from './tautulli'
 import { sendToAll, type SendResult } from './push'
@@ -102,10 +102,13 @@ export async function handlePlaybackStart(
     return { notified: false, reason }
   }
 
+  const subject = subjectKey(meta)
+  if (isNotifyMuted(subject)) return { notified: false, reason: `Muted: ${showOrTitle(meta)}` }
+
   const gate = libraryGateReason(settings, meta)
   if (gate) return { notified: false, reason: gate }
 
-  const show = showKey(input.username, subjectKey(meta))
+  const show = showKey(input.username, subject)
   if (seen(show, SHOW_WINDOW_MS, now)) {
     stamp(now, show, item)
     return { notified: false, reason: `Already notified for ${showOrTitle(meta)} recently` }

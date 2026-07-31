@@ -714,6 +714,53 @@ describe('push subscriptions', () => {
   })
 })
 
+describe('notify mutes', () => {
+  it('stores, finds and removes a mute', async () => {
+    const db = await freshDb()
+    expect(db.listNotifyMutes()).toEqual([])
+    expect(db.isNotifyMuted('999')).toBe(false)
+
+    db.addNotifyMute('999', 'Breaking Bad', 'show')
+
+    expect(db.isNotifyMuted('999')).toBe(true)
+    expect(db.listNotifyMutes()).toEqual([
+      { subject_key: '999', title: 'Breaking Bad', media_type: 'show', created: expect.any(Number) },
+    ])
+
+    db.deleteNotifyMute('999')
+    expect(db.isNotifyMuted('999')).toBe(false)
+    expect(db.listNotifyMutes()).toEqual([])
+  })
+
+  it('refreshes the label rather than throwing on a second mute', async () => {
+    const db = await freshDb()
+    db.addNotifyMute('999', 'Breaking Bad', 'show')
+    db.addNotifyMute('999', 'Breaking Bad (2008)', 'show')
+
+    const mutes = db.listNotifyMutes()
+    expect(mutes).toHaveLength(1)
+    expect(mutes[0]!.title).toBe('Breaking Bad (2008)')
+  })
+
+  it('sorts by title, case-insensitively', async () => {
+    const db = await freshDb()
+    db.addNotifyMute('2', 'severance', 'show')
+    db.addNotifyMute('1', 'Breaking Bad', 'show')
+    db.addNotifyMute('3', 'The Matrix', 'movie')
+
+    expect(db.listNotifyMutes().map((m) => m.title)).toEqual([
+      'Breaking Bad',
+      'severance',
+      'The Matrix',
+    ])
+  })
+
+  it('deleting an absent mute is a no-op', async () => {
+    const db = await freshDb()
+    expect(() => db.deleteNotifyMute('nope')).not.toThrow()
+  })
+})
+
 describe('parseNotifyUsers', () => {
   it('degrades every malformed value to an empty list', async () => {
     const db = await freshDb()

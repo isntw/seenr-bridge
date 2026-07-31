@@ -2,7 +2,14 @@ import Database from 'better-sqlite3'
 import path from 'node:path'
 import fs from 'node:fs'
 import crypto from 'node:crypto'
-import type { Settings, Mapping, ScrobbleEvent, Stats, SharedTitle } from '../../shared/types'
+import type {
+  Settings,
+  Mapping,
+  ScrobbleEvent,
+  Stats,
+  SharedTitle,
+  NotifyMute,
+} from '../../shared/types'
 
 const CACHE_KEY = '__seenrBridgeDb__'
 
@@ -138,6 +145,13 @@ CREATE TABLE IF NOT EXISTS pending_watches (
   FOREIGN KEY (mapping_id) REFERENCES mappings (id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_pending_rating_key ON pending_watches (rating_key);
+
+CREATE TABLE IF NOT EXISTS notify_mutes (
+  subject_key TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  media_type TEXT NOT NULL,
+  created INTEGER NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS push_subscriptions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -834,6 +848,36 @@ export function deletePendingWatchesByIds(ids: number[]): void {
   useDb()
     .prepare(`DELETE FROM pending_watches WHERE id IN (${ids.map(() => '?').join(',')})`)
     .run(...ids)
+}
+
+export function listNotifyMutes(): NotifyMute[] {
+  return useDb()
+    .prepare(
+      `SELECT subject_key, title, media_type, created
+         FROM notify_mutes
+        ORDER BY title COLLATE NOCASE`,
+    )
+    .all() as NotifyMute[]
+}
+
+export function isNotifyMuted(subjectKey: string): boolean {
+  return !!useDb().prepare('SELECT 1 FROM notify_mutes WHERE subject_key = ?').get(subjectKey)
+}
+
+export function addNotifyMute(subjectKey: string, title: string, mediaType: string): void {
+  // The dialog and the notification's action button can both mute the same show,
+  // so a second write refreshes the stored label rather than throwing.
+  useDb()
+    .prepare(
+      `INSERT INTO notify_mutes (subject_key, title, media_type, created)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(subject_key) DO UPDATE SET title = excluded.title, media_type = excluded.media_type`,
+    )
+    .run(subjectKey, title, mediaType, Date.now())
+}
+
+export function deleteNotifyMute(subjectKey: string): void {
+  useDb().prepare('DELETE FROM notify_mutes WHERE subject_key = ?').run(subjectKey)
 }
 
 const MAX_EVENTS = 1000

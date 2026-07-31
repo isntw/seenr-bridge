@@ -19,6 +19,7 @@ const meta: TautulliMetadata = {
   guids: ['tmdb://62161'],
   thumb: '/library/metadata/12345/thumb/1',
   grandparent_thumb: '/library/metadata/999/thumb/1',
+  art: '/library/metadata/999/art/1',
 }
 
 const getMetadata = vi.fn(async () => meta)

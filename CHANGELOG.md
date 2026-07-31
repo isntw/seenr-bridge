@@ -2,6 +2,18 @@
 
 Notable changes per release. Versions follow [semantic versioning](https://semver.org).
 
+## 2.6.6
+
+### Changed
+
+- **Artwork moved to the notification's large image, and the app icon stays put.**
+  The small icon slot is square and the platform stretches whatever it is given, so
+  a 2:3 poster arrived squashed no matter how carefully it was fetched — and
+  Tautulli cannot crop, it only scales to fit. The art now goes in the wide row
+  instead, where a large picture belongs and where 16:9 is the right shape: the
+  episode's own still for an episode, Plex's backdrop for a film, since a film's
+  only other art is its poster.
+
 ## 2.6.5
 
 ### Fixed

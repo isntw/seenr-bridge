@@ -111,6 +111,8 @@ export interface TautulliMetadata {
   guids: string[]
   thumb: string
   grandparent_thumb: string
+  /** Plex's 16:9 backdrop. The only wide art a movie has — `thumb` is its poster. */
+  art: string
 }
 
 export interface ActivitySession {

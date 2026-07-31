@@ -1,4 +1,13 @@
-import { firstUser, getSettings, isNotifyMuted, parseNotifyUsers } from './db'
+import {
+  firstUser,
+  getMappingByUsername,
+  getSettings,
+  getSharedTitleProfiles,
+  isNotifyMuted,
+  parseNotifyUsers,
+  setSharedTitle,
+  type MappingRow,
+} from './db'
 import { libraryGateReason } from './pipeline'
 import { getMetadata } from './tautulli'
 import { posterUrl, WIDE_BOX } from './poster'
@@ -85,6 +94,75 @@ export function notifiesFor(username: string, storedUsers: string): boolean {
   return parseNotifyUsers(storedUsers).some((u) => u.toLowerCase() === wanted)
 }
 
+/** Whether the account reading the notification is the one that pressed play. */
+export function isOwnPlayback(username: string): boolean {
+  return ownerNames().includes(username.toLowerCase())
+}
+
+/** The mapping that counts watches for the signed-in account, if there is one. */
+export function ownMapping(): MappingRow | undefined {
+  for (const name of ownerNames()) {
+    const mapping = getMappingByUsername(name)
+    if (mapping) return mapping
+  }
+  return undefined
+}
+
+export interface JoinResult {
+  ok: boolean
+  title?: string
+  reason?: string
+}
+
+/**
+ * Share the title being played with the operator's own profile, Plex included —
+ * what the notification's "Count me in" button does.
+ *
+ * Keyed on the show for an episode, so every future episode counts too, which is
+ * the same subject the Watch-together dialog and the mute use. Existing members are
+ * kept: setSharedTitle replaces the profile set wholesale, so a blind write would
+ * drop whoever was already on the title.
+ */
+export async function joinSharedTitle(ratingKey: string): Promise<JoinResult> {
+  const settings = getSettings()
+  if (!settings.tautulli_url || !settings.tautulli_apikey)
+    return { ok: false, reason: 'Tautulli connection not configured' }
+
+  const mine = ownMapping()
+  if (!mine) return { ok: false, reason: 'No seenr profile matches your account' }
+
+  let meta: TautulliMetadata
+  try {
+    meta = await getMetadata(settings.tautulli_url, settings.tautulli_apikey, ratingKey)
+  } catch (e) {
+    return { ok: false, reason: `Metadata lookup failed: ${e instanceof Error ? e.message : String(e)}` }
+  }
+
+  const subject = subjectKey(meta)
+  const episode = meta.media_type === 'episode'
+  const profiles = new Set(getSharedTitleProfiles(subject))
+  profiles.add(mine.id)
+
+  setSharedTitle(
+    {
+      rating_key: subject,
+      media_type: episode ? 'show' : meta.media_type,
+      title: showOrTitle(meta),
+      year: String(meta.year ?? ''),
+      image: (episode ? meta.grandparent_thumb || meta.thumb : meta.thumb) || undefined,
+      section_id: meta.section_id != null ? String(meta.section_id) : undefined,
+      library_name: meta.library_name,
+      // The show's guid for an episode: the share is keyed on the show, and the guid
+      // is what matches a watch from a different library holding the same title.
+      guid: (episode ? meta.grandparent_guid : meta.guid) || undefined,
+      plex_sync: 1,
+    },
+    [...profiles],
+  )
+
+  return { ok: true, title: showOrTitle(meta) }
+}
+
 /**
  * The whole notification, from metadata. Exported because /api/push/test sends a
  * real one for the last thing watched — a test that skipped this would prove only
@@ -96,10 +174,11 @@ export function notificationFor(
   now = Date.now(),
 ): PushPayload {
   const subject = subjectKey(meta)
+  const own = isOwnPlayback(username)
 
   return {
     title: [showOrTitle(meta), detail(meta)].filter(Boolean).join(' — '),
-    body: `Started by ${username} · Watch together →`,
+    body: `Started by ${own ? 'you' : username} · Watch together`,
     url: `/dashboard?watch=${encodeURIComponent(meta.rating_key)}&user=${encodeURIComponent(username)}`,
     tag: showKey(username, subject),
     image: posterUrl(wideArt(meta), WIDE_BOX, now),
@@ -108,6 +187,9 @@ export function notificationFor(
       title: showOrTitle(meta),
       media_type: meta.media_type === 'episode' ? 'show' : meta.media_type,
     },
+    // Only worth offering for someone else's playback: counting your own watch for
+    // yourself is what the bridge already does unaided.
+    join: own ? undefined : { rating_key: meta.rating_key, title: showOrTitle(meta) },
   }
 }
 

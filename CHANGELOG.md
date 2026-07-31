@@ -2,6 +2,24 @@
 
 Notable changes per release. Versions follow [semantic versioning](https://semver.org).
 
+## 2.6.7
+
+### Added
+
+- **"Count me in" on a notification.** When someone else starts something, the
+  notification offers a button that shares the title with your own profile and turns
+  on the Plex write, in one press — no opening the app. It is keyed on the show for
+  an episode, so the rest of the series counts for you too, and it confirms with a
+  notification rather than silently. Absent from your own playback, where there is
+  nothing to add.
+
+### Changed
+
+- **"Started by you"** instead of your own username, when the playback is yours.
+- **Tidier notification.** The duplicate app icon is gone — the badge already carries
+  that mark, and setting both put the same logo in twice — and the trailing arrow
+  after "Watch together" with it.
+
 ## 2.6.6
 
 ### Changed

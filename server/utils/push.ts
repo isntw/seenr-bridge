@@ -24,6 +24,8 @@ export interface PushPayload {
   image?: string
   /** Present when the notification offers a mute action; absent on the test push. */
   mute?: { subject_key: string; title: string; media_type: string }
+  /** Present when someone else pressed play, so "count me in" has something to do. */
+  join?: { rating_key: string; title: string }
 }
 
 export function ensureVapidKeys(): { publicKey: string; privateKey: string } {

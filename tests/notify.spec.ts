@@ -49,6 +49,7 @@ interface SentPayload {
   icon?: string
   image?: string
   mute?: { subject_key: string; title: string; media_type: string }
+  join?: { rating_key: string; title: string }
 }
 const sendToAll = vi.fn(async (_payload: SentPayload) => ({ sent: 1, failed: 0, pruned: 0 }))
 vi.mock('../server/utils/push', () => ({
@@ -465,6 +466,50 @@ describe('handlePlaybackStart', () => {
     expect(sendToAll.mock.calls[0]![0].image).toBe('')
   })
 
+  it('says "you" when the watcher is the signed-in account', async () => {
+    const { db, notify } = await load()
+    db.createUser('isntw', 'x:y')
+    enable(db, [])
+
+    await notify.handlePlaybackStart({ ...play, username: 'isntw' })
+
+    expect(sendToAll.mock.calls[0]![0].body).toBe('Started by you · Watch together')
+  })
+
+  it('says "you" for the linked Plex username too', async () => {
+    const { db, notify } = await load()
+    db.createUserFromPlex('bridge-admin', { id: '1', username: 'plexguy', thumb: '' })
+    enable(db, [])
+
+    await notify.handlePlaybackStart({ ...play, username: 'plexguy' })
+
+    expect(sendToAll.mock.calls[0]![0].body).toBe('Started by you · Watch together')
+  })
+
+  it('offers "count me in" for someone else’s playback', async () => {
+    const { db, notify } = await load()
+    db.createUser('isntw', 'x:y')
+    enable(db)
+
+    await notify.handlePlaybackStart(play)
+
+    expect(sendToAll.mock.calls[0]![0].join).toEqual({
+      rating_key: '12345',
+      title: 'Breaking Bad',
+    })
+  })
+
+  // Counting your own watch for yourself is what the bridge already does unaided.
+  it('does not offer it for your own playback', async () => {
+    const { db, notify } = await load()
+    db.createUser('isntw', 'x:y')
+    enable(db, [])
+
+    await notify.handlePlaybackStart({ ...play, username: 'isntw' })
+
+    expect(sendToAll.mock.calls[0]![0].join).toBeUndefined()
+  })
+
   it('carries what the mute action needs', async () => {
     const { db, notify } = await load()
     enable(db)
@@ -560,7 +605,7 @@ describe('handlePlaybackStart', () => {
 
     const payload = sendToAll.mock.calls[0]![0]
     expect(payload.title).toBe('Breaking Bad — S5·E14 · Ozymandias')
-    expect(payload.body).toBe('Started by alice · Watch together →')
+    expect(payload.body).toBe('Started by alice · Watch together')
   })
 
   it('deep-links to the watch-together dialog', async () => {
@@ -582,7 +627,7 @@ describe('handlePlaybackStart', () => {
 
     const payload = sendToAll.mock.calls[0]![0]
     expect(payload.title).toBe('The Matrix — 1999')
-    expect(payload.body).toBe('Started by alice · Watch together →')
+    expect(payload.body).toBe('Started by alice · Watch together')
   })
 
   it('omits the dash when a movie has no year', async () => {

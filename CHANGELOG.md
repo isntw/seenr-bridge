@@ -2,6 +2,23 @@
 
 Notable changes per release. Versions follow [semantic versioning](https://semver.org).
 
+## 2.6.8
+
+### Fixed
+
+- **An already-shared title no longer notifies.** The notification exists to ask
+  whether to count a title for you, so it had no business arriving for a show that
+  is already shared with you and the person playing it — that watch fans out on its
+  own, and "Count me in" had nothing to add. It went out for your own playback and
+  for anyone on your notify list, on every new show, which made the shows you watch
+  together the noisiest ones. Matching is on the show's Plex guid as well as its
+  rating key, so a share created from the copy in your other library counts.
+
+  It still notifies when there is something left to do: a title shared between other
+  people with you not on it (where "Count me in" is real), and someone playing a
+  shared title who is not on the share themselves — that watch counts for nobody
+  until you open Watch together.
+
 ## 2.6.7
 
 ### Added

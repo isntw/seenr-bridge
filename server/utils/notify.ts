@@ -2,6 +2,7 @@ import {
   firstUser,
   getMappingByUsername,
   getSettings,
+  getSharedRecipients,
   getSharedTitleProfiles,
   isNotifyMuted,
   parseNotifyUsers,
@@ -31,6 +32,32 @@ export function subjectKey(m: TautulliMetadata): string {
   return m.media_type === 'episode' && m.grandparent_rating_key
     ? m.grandparent_rating_key
     : m.rating_key
+}
+
+/** Plex's id for that same subject, which is what a share matches across libraries. */
+function subjectGuid(m: TautulliMetadata): string {
+  return (m.media_type === 'episode' ? m.grandparent_guid : m.guid) || ''
+}
+
+/**
+ * Whether the share on this title already does everything the notification would
+ * offer, which is the whole question it asks.
+ *
+ * Both halves are needed. Your profile being on the share is what makes "Count me
+ * in" a no-op — but that alone is not enough, because processEvent only fans a watch
+ * out when the person who pressed play is *also* one of the share's profiles: a
+ * non-member playing a shared show counts for nobody, and the dialog's "just this
+ * once" is then the only thing that can fix it. So it stays worth asking about.
+ */
+function shareCoversPlayback(meta: TautulliMetadata, username: string): boolean {
+  const recipients = getSharedRecipients(subjectKey(meta), subjectGuid(meta))
+  if (!recipients.length) return false
+
+  const mine = ownMapping()
+  if (!mine || !recipients.some((r) => r.id === mine.id)) return false
+
+  const player = isOwnPlayback(username) ? mine : getMappingByUsername(username)
+  return !!player?.enabled && recipients.some((r) => r.id === player.id)
 }
 
 function showKey(username: string, subject: string): string {
@@ -233,6 +260,9 @@ export async function handlePlaybackStart(
 
   const gate = libraryGateReason(settings, meta)
   if (gate) return { notified: false, reason: gate }
+
+  if (shareCoversPlayback(meta, input.username))
+    return { notified: false, reason: `Already shared with you: ${showOrTitle(meta)}` }
 
   const show = showKey(input.username, subject)
   if (seen(show, SHOW_WINDOW_MS, now)) {

@@ -374,6 +374,115 @@ describe('handlePlaybackStart', () => {
     expect(db.listEvents(50)).toHaveLength(0)
   })
 
+  // The notification asks whether to share the title. Once the share answers that
+  // for this playback — you are counted and the fan-out fires on its own — asking
+  // again is noise. See shareCoversPlayback().
+  it('skips a show already shared with you and the person playing it', async () => {
+    const { db, notify } = await load()
+    enable(db)
+    db.createUser('isntw', 'x:y')
+    const mine = db.upsertMapping('isntw', 't', 1)
+    const alice = db.upsertMapping('alice', 'a', 1)
+    db.setSharedTitle({ rating_key: '999', media_type: 'show', title: 'Breaking Bad' }, [mine.id, alice.id])
+
+    const r = await notify.handlePlaybackStart(play)
+
+    expect(r.notified).toBe(false)
+    expect(r.reason).toBe('Already shared with you: Breaking Bad')
+    expect(sendToAll).not.toHaveBeenCalled()
+  })
+
+  it('skips your own playback of a title already shared with you', async () => {
+    const { db, notify } = await load()
+    enable(db, [])
+    db.createUser('isntw', 'x:y')
+    const mine = db.upsertMapping('isntw', 't', 1)
+    db.setSharedTitle({ rating_key: '999', media_type: 'show', title: 'Breaking Bad' }, [mine.id])
+
+    const r = await notify.handlePlaybackStart({ ...play, username: 'isntw' })
+
+    expect(r.notified).toBe(false)
+    expect(sendToAll).not.toHaveBeenCalled()
+  })
+
+  it('skips a movie already shared, matched on its own key', async () => {
+    const { db, notify } = await load()
+    enable(db)
+    getMetadata.mockImplementation(async () => movie)
+    db.createUser('isntw', 'x:y')
+    const mine = db.upsertMapping('isntw', 't', 1)
+    const alice = db.upsertMapping('alice', 'a', 1)
+    db.setSharedTitle({ rating_key: '555', media_type: 'movie', title: 'The Matrix' }, [mine.id, alice.id])
+
+    const r = await notify.handlePlaybackStart({ ...play, rating_key: '555' })
+
+    expect(r.notified).toBe(false)
+    expect(r.reason).toBe('Already shared with you: The Matrix')
+  })
+
+  // Two libraries hold the same show under different rating_keys but ONE guid, so a
+  // share created from the copy nobody plays from must still silence the ask.
+  it('matches the share by the show’s guid, not only its rating_key', async () => {
+    const { db, notify } = await load()
+    enable(db)
+    db.createUser('isntw', 'x:y')
+    const mine = db.upsertMapping('isntw', 't', 1)
+    const alice = db.upsertMapping('alice', 'a', 1)
+    db.setSharedTitle(
+      { rating_key: '9815', media_type: 'show', title: 'Breaking Bad', guid: 'plex://show/def' },
+      [mine.id, alice.id],
+    )
+
+    const r = await notify.handlePlaybackStart(play)
+
+    expect(r.notified).toBe(false)
+    expect(sendToAll).not.toHaveBeenCalled()
+  })
+
+  // processEvent only fans a watch out when the watcher is on the share too, so this
+  // one counts for nobody until the dialog is opened.
+  it('still notifies when the person playing is not on the share', async () => {
+    const { db, notify } = await load()
+    enable(db)
+    db.createUser('isntw', 'x:y')
+    const mine = db.upsertMapping('isntw', 't', 1)
+    db.upsertMapping('alice', 'a', 1)
+    db.setSharedTitle({ rating_key: '999', media_type: 'show', title: 'Breaking Bad' }, [mine.id])
+
+    const r = await notify.handlePlaybackStart(play)
+
+    expect(r.notified).toBe(true)
+    expect(sendToAll).toHaveBeenCalledTimes(1)
+  })
+
+  it('still notifies for a title shared between others, where "count me in" is real', async () => {
+    const { db, notify } = await load()
+    enable(db)
+    db.createUser('isntw', 'x:y')
+    db.upsertMapping('isntw', 't', 1)
+    const alice = db.upsertMapping('alice', 'a', 1)
+    const bob = db.upsertMapping('bob', 'b', 1)
+    db.setSharedTitle({ rating_key: '999', media_type: 'show', title: 'Breaking Bad' }, [alice.id, bob.id])
+
+    const r = await notify.handlePlaybackStart(play)
+
+    expect(r.notified).toBe(true)
+    expect(sendToAll.mock.calls[0]![0].join).toEqual({ rating_key: '12345', title: 'Breaking Bad' })
+  })
+
+  it('still notifies when the profile playing is disabled, since nothing fans out', async () => {
+    const { db, notify } = await load()
+    enable(db)
+    db.createUser('isntw', 'x:y')
+    const mine = db.upsertMapping('isntw', 't', 1)
+    const alice = db.upsertMapping('alice', 'a', 0)
+    db.setSharedTitle({ rating_key: '999', media_type: 'show', title: 'Breaking Bad' }, [mine.id, alice.id])
+
+    const r = await notify.handlePlaybackStart(play)
+
+    expect(r.notified).toBe(true)
+  })
+
   it('tags by show so the OS replaces rather than stacks', async () => {
     const { db, notify } = await load()
     enable(db)

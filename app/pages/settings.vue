@@ -1067,8 +1067,9 @@ async function runTest(dryRun: boolean) {
       <div class="space-y-1">
         <p class="text-sm font-medium text-highlighted">Who to be notified about</p>
         <p class="text-xs text-dimmed">
-          Your own playback always notifies you. Add anyone you watch with, then tap the
-          notification to count their watch for someone.
+          Your own playback notifies you too. Add anyone you watch with, then tap the
+          notification to count their watch for someone. A title already shared with both
+          of you stays quiet — it is already counted.
         </p>
       </div>
 
